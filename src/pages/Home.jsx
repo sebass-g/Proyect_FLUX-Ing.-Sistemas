@@ -148,5 +148,6 @@ export default function Home() {
       {/* Muestra errores de validación o API */}
       {error && <div className="alert">{error}</div>}
     </div>
+    
   );
 }
