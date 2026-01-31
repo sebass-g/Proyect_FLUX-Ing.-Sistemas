@@ -1,63 +1,117 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { supabase } from "./config/supabaseClient"; // Importamos Supabase
 import "./App.css"; 
 import "./estilos/flux.css"; // Importamos los estilos globales de FLUX
 
 // Importamos las páginas
-import Registro from "./paginas/Registro";
-import PaginaGrupos from "./paginas/PaginaGrupos";
-import PaginaDetalleGrupo from "./paginas/PaginaDetalleGrupo";
+import Registro from "./pages/Registro";
+import Home from "./pages/Home";
+import GrupoDetalle from "./pages/GrupoDetalle";
+
+// Bloquea rutas privadas: si no hay sesión, manda al login
+function RequireAuth({ session, loading, children }) {
+  const location = useLocation();
+
+  // Espera a que Supabase resuelva la sesión inicial
+  if (loading) {
+    return (
+      <div className="container">
+        {/* Estado de carga mientras se valida la sesión */}
+        <div className="card">Cargando...</div>
+      </div>
+    );
+  }
+
+  // Usuario no autenticado: redirigir a login y guardar destino
+  if (!session) {
+    // Usuario no autenticado: redirigir a login
+    return <Navigate to="/auth" replace state={{ from: location }} />;
+  }
+
+  return children;
+}
+
+// Bloquea el login si ya hay sesión activa
+function GuestOnly({ session, loading, children }) {
+  const location = useLocation();
+
+  // Espera a que Supabase resuelva la sesión inicial
+  if (loading) {
+    return (
+      <div className="container">
+        {/* Estado de carga mientras se valida la sesión */}
+        <div className="card">Cargando...</div>
+      </div>
+    );
+  }
+
+  // Si ya hay sesión, regresamos al destino original o al home
+  if (session) {
+    // Usuario autenticado: evitar volver al login
+    const destino = location.state?.from?.pathname || "/grupos";
+    return <Navigate to={destino} replace />;
+  }
+
+  return children;
+}
 
 export default function App() {
-  // 1. Estado para saber si hay un usuario logueado (sesión)
+  // Estado global de autenticación
   const [session, setSession] = useState(null);
-
-  // 2. Estado para la navegación de grupos (el que ya tenías)
-  const [codigoGrupoAbierto, setCodigoGrupoAbierto] = useState(null);
+  const [loadingSession, setLoadingSession] = useState(true);
 
   useEffect(() => {
-    // A. Revisar si ya había una sesión guardada al abrir la app
+    // 1) Revisar si ya había una sesión guardada al abrir la app
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setLoadingSession(false);
     });
 
-    // B. Escuchar cambios: si se loguea o se sale, actualizamos el estado
+    // 2) Escuchar cambios: login/logout/refresh de token
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setLoadingSession(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- LÓGICA DE PANTALLAS ---
-
-  // CASO 1: Si NO hay sesión, mostramos el Registro (Login/Registro)
-  if (!session) {
-    return <Registro />;
-  }
-
-  // CASO 2: Si SÍ hay sesión, mostramos la App de Grupos (tu código original)
-  return codigoGrupoAbierto ? (
-    <PaginaDetalleGrupo
-      codigoGrupo={codigoGrupoAbierto}
-      volver={() => setCodigoGrupoAbierto(null)}
-    />
-  ) : (
-    <div className="container"> 
-      {/* Botón temporal para Cerrar Sesión y probar que funciona */}
-      <div style={{display: 'flex', justifyContent: 'flex-end', padding: '10px'}}>
-        <button 
-          className="btn" 
-          style={{width: 'auto', background: '#333', fontSize: '12px'}}
-          onClick={() => supabase.auth.signOut()}
-        >
-          Cerrar Sesión
-        </button>
-      </div>
-
-      <PaginaGrupos abrirGrupo={(codigo) => setCodigoGrupoAbierto(codigo)} />
-    </div>
+  // Rutas públicas/privadas
+  return (
+    <Routes>
+      <Route
+        path="/auth"
+        element={
+          <GuestOnly session={session} loading={loadingSession}>
+            {/* Pantalla de registro/login */}
+            <Registro />
+          </GuestOnly>
+        }
+      />
+      <Route
+        path="/grupos"
+        element={
+          <RequireAuth session={session} loading={loadingSession}>
+            {/* Home: crear/unirse a grupos */}
+            <Home />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/grupos/:codigo"
+        element={
+          <RequireAuth session={session} loading={loadingSession}>
+            {/* Detalle de un grupo específico */}
+            <GrupoDetalle />
+          </RequireAuth>
+        }
+      />
+      {/* Redirecciones por defecto */}
+      <Route path="/" element={<Navigate to="/grupos" replace />} />
+      <Route path="*" element={<Navigate to="/grupos" replace />} />
+    </Routes>
   );
 }

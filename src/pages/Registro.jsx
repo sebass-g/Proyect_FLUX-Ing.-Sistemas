@@ -3,15 +3,16 @@ import { supabase } from '../config/supabaseClient'
 import '../estilos/flux.css' 
 
 function Registro() {
-  // --- ESTADOS ---
+  // Estados principales del formulario y su UI
   const [esLogin, setEsLogin] = useState(true) // true = Iniciar Sesión, false = Crear Cuenta
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
 
-  // --- LÓGICA PRINCIPAL ---
+  // Maneja login/registro con validaciones y mensajes de respuesta
   const manejarAuth = async (e) => {
+    // Evita reload del navegador y limpia el estado previo
     e.preventDefault()
     setMensaje({ texto: '', tipo: '' })
     setCargando(true)
@@ -40,12 +41,12 @@ function Registro() {
       } else {
         // === MODO CREAR CUENTA (REGISTRO) ===
         
-        // 1. Validar Correo UNIMET
+        // 1. Validar dominio UNIMET
         if (!email.endsWith('@correo.unimet.edu.ve')) {
           throw new Error('Solo se permiten correos @correo.unimet.edu.ve')
         }
 
-        // 2. Validar Contraseña Segura
+        // 2. Validar contraseña segura mínima
         const regex = /^(?=.*\d)(?=.*[A-Z]).{8,}$/
         if (!regex.test(password)) {
           throw new Error('La contraseña debe tener: 8 caracteres, 1 mayúscula y 1 número.')
@@ -66,8 +67,10 @@ function Registro() {
       }
 
     } catch (error) {
+      // Mensajes de error controlados para UI
       setMensaje({ texto: '⚠️ ' + error.message, tipo: 'error' })
     } finally {
+      // Termina el estado de carga en cualquier caso
       setCargando(false)
     }
   }
@@ -75,13 +78,14 @@ function Registro() {
   return (
     <div className="auth-layout">
       
-      {/* HEADER: Logo y Título dinámico */}
+      {/* HEADER: marca y subtítulo dinámico */}
       <div className="auth-header">
         <div className="brand">
           <div className="logoDot"></div>
           <span className="brandTitle" style={{ fontSize: '28px' }}>FLUX</span>
         </div>
         <span className="brandSubtitle" style={{ fontSize: '16px' }}>
+          {/* Subtítulo cambia según si es login o registro */}
           {esLogin ? 'Bienvenido de nuevo' : 'Únete a la comunidad'}
         </span>
       </div>
@@ -89,11 +93,13 @@ function Registro() {
       {/* TARJETA CENTRADA Y GRANDE */}
       <div className="card auth-card-width">
         <h2 className="text-center mb-4" style={{marginTop: 0}}>
+          {/* Título cambia según si es login o registro */}
           {esLogin ? 'Iniciar Sesión' : 'Crear Usuario'}
         </h2>
         
         <form onSubmit={manejarAuth}>
           
+          {/* Input: correo institucional */}
           <div className="mb-4">
             <label className="label">Correo Institucional</label>
             <input 
@@ -106,6 +112,7 @@ function Registro() {
             />
           </div>
 
+          {/* Input: contraseña */}
           <div className="mb-4">
             <label className="label">Contraseña</label>
             <input 
@@ -124,6 +131,7 @@ function Registro() {
             className="btn btnPrimary" 
             disabled={cargando}
           >
+            {/* Botón principal del formulario */}
             {cargando ? 'Procesando...' : (esLogin ? 'Iniciar Sesión' : 'Registrarse')}
           </button>
 
@@ -140,10 +148,12 @@ function Registro() {
           type="button" 
           className="btn btn-secundario"
           onClick={() => {
+            // Alterna entre login y registro
             setEsLogin(!esLogin)
             setMensaje({ text: '', tipo: '' }) // Limpiar errores al cambiar
           }}
         >
+          {/* Botón para alternar modo */}
           {esLogin ? 'Crear Usuario Nuevo' : 'Volver a Iniciar Sesión'}
         </button>
 
@@ -151,6 +161,7 @@ function Registro() {
         {mensaje.texto && (
           <div className={mensaje.tipo === 'error' ? 'alert' : 'preview'} style={{ marginTop: '20px' }}>
             <span className="label" style={{marginBottom: 0, color: 'var(--texto)', textAlign: 'center', display: 'block'}}>
+              {/* Mensaje de error o éxito */}
               {mensaje.texto}
             </span>
           </div>
