@@ -77,7 +77,7 @@ export default function Home() {
         </div>
         <button
           className="btn"
-          style={{ width: "auto", background: "#333", fontSize: "12px" }}
+          style={{ width: "auto", background: "#f7f3f315", fontSize: "12px" }}
           onClick={() => supabase.auth.signOut()}
         >
           {/* Botón para cerrar sesión */}

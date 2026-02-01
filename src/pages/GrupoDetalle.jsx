@@ -143,7 +143,7 @@ export default function GrupoDetalle() {
           </button>
           <button
             className="btn"
-            style={{ width: "auto", background: "#333", fontSize: "12px" }}
+            style={{ width: "auto", background: "#ffffff10", fontSize: "12px" }}
             onClick={() => supabase.auth.signOut()}
           >
             {/* Botón para cerrar sesión */}
