@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   crearGrupo,
+  listarGruposDelUsuario,
   obtenerVistaPreviaPorCodigo,
   unirseAGrupoPorCodigo
 } from "../servicios/grupos.api";
@@ -17,11 +18,46 @@ export default function Home() {
   const [codigoIngreso, setCodigoIngreso] = useState("");
   const [vistaPrevia, setVistaPrevia] = useState(null);
   const [error, setError] = useState("");
+  const [gruposUsuario, setGruposUsuario] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function cargarDisplayName() {
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) {
+        setError("No se pudo leer la sesion.");
+        return;
+      }
+      const user = data?.session?.user;
+      const displayName = user?.user_metadata?.display_name?.trim();
+      if (isMounted) {
+        setNombreUsuario(displayName || "");
+      }
+    }
+
+    async function cargarGrupos() {
+      try {
+        const grupos = await listarGruposDelUsuario();
+        if (isMounted) {
+          setGruposUsuario(grupos);
+        }
+      } catch (e) {
+        setError(e.message);
+      }
+    }
+
+    cargarDisplayName();
+    cargarGrupos();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function manejarCrearGrupo() {
     // Valida inputs y crea el grupo con código único
     setError("");
-    if (!nombreUsuario.trim()) return setError("Ingrese su nombre.");
+    if (!nombreUsuario.trim()) return setError("No se encontro tu display name.");
     if (!nombreGrupo.trim()) return setError("Ingrese el nombre del grupo.");
 
     const grupo = await crearGrupo({
@@ -48,7 +84,7 @@ export default function Home() {
   async function manejarUnirse() {
     // Valida inputs y une al usuario al grupo
     setError("");
-    if (!nombreUsuario.trim()) return setError("Ingrese su nombre.");
+    if (!nombreUsuario.trim()) return setError("No se encontro tu display name.");
     if (!codigoIngreso.trim()) return setError("Ingrese el código del grupo.");
 
     try {
@@ -87,14 +123,38 @@ export default function Home() {
 
       {/* Perfil rápido (nombre visible usado en miembros/actividad) */}
       <div className="card">
-        <strong>Tu perfil (MVP)</strong>
-        <label className="label">Nombre visible</label>
-        <input
-          className="input"
-          value={nombreUsuario}
-          onChange={e => setNombreUsuario(e.target.value)}
-          placeholder="Ej: Enrique"
-        />
+        <strong>Bienvenido{nombreUsuario ? `, ${nombreUsuario}` : ""}</strong>
+        <div className="label" style={{ marginBottom: 0 }}>
+          Ya puedes crear tu grupo o unirte con un código.
+        </div>
+      </div>
+
+      <div style={{ height: 16 }} />
+
+      {/* Grupos del usuario */}
+      <div className="card">
+        <strong>Mis grupos</strong>
+        {gruposUsuario.length === 0 ? (
+          <div className="label" style={{ marginBottom: 0 }}>
+            Aun no perteneces a ningun grupo.
+          </div>
+        ) : (
+          <div className="grupos-scroll">
+            {gruposUsuario.map(grupo => (
+              <button
+                key={grupo.id}
+                className="btn"
+                style={{ textAlign: "left" }}
+                onClick={() => navigate(`/grupos/${grupo.codigo}`)}
+              >
+                <div style={{ fontWeight: 800 }}>{grupo.nombre}</div>
+                <div className="label" style={{ marginBottom: 0 }}>
+                  Codigo: {grupo.codigo}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ height: 16 }} />

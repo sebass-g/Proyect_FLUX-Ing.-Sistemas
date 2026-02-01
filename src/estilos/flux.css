@@ -21,12 +21,17 @@
 html {
   /* Permite que el html crezca más allá de la pantalla */
   min-height: 100%;
+  background: var(--fondo);
 }
 
 body{
   margin: 0;
   font-family: var(--fuente);
   color: var(--texto);
+  display: block;
+  place-items: normal;
+  min-width: 0;
+  width: 100%;
   
   /* Cambiar a min-height para cubrir scroll */
   min-height: 100vh;
@@ -38,10 +43,14 @@ body{
     radial-gradient(700px 500px at 85% 15%, rgba(219, 225, 231, 0.12), transparent 55%),
     var(--fondo);
   
-  /* Cambiar a 100% 100% para estirar con la pantalla */
-  background-size: 100% 100%; 
+  background-size: 100% 100%;
   background-attachment: scroll;
   background-repeat: no-repeat;
+}
+
+#root{
+  width: 100%;
+  min-height: 100vh;
 }
 
 /* === RESTO DE TU CÓDIGO === */
@@ -192,6 +201,35 @@ body{
   padding-right: 6px;
 }
 
+.grupos-scroll{
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 52, 63, 0.55) rgba(37, 52, 63, 0.12);
+}
+
+.grupos-scroll::-webkit-scrollbar{
+  width: 10px;
+}
+.grupos-scroll::-webkit-scrollbar-track{
+  background: rgba(37, 52, 63, 0.08);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 1px rgba(37, 52, 63, 0.08);
+}
+.grupos-scroll::-webkit-scrollbar-thumb{
+  background: linear-gradient(180deg, rgba(37, 52, 63, 0.65), rgba(37, 52, 63, 0.35));
+  border-radius: 12px;
+  border: 2px solid rgba(37, 52, 63, 0.08);
+}
+.grupos-scroll::-webkit-scrollbar-thumb:hover{
+  background: linear-gradient(180deg, rgba(255, 155, 81, 0.75), rgba(37, 52, 63, 0.45));
+}
+
 .auth-layout {
   display: flex;
   flex-direction: column;
@@ -211,20 +249,35 @@ body{
 }
 
 .auth-card-width {
-  width: 100%;
+  width: fit-content;
   max-width: 480px;
   padding: 30px;
 }
 
 @media (max-width: 600px) {
   .auth-card-width {
+    width: 100%;
     padding: 20px;
+  }
+  .auth-card-width .input,
+  .auth-card-width .btn {
+    width: 100%;
   }
 }
 
 .auth-card-width h2 { margin: 0 0 16px 0; }
 .auth-card-width form { margin: 0; }
 .auth-card-width .btn { margin-top: 0; }
+.auth-card-width .input,
+.auth-card-width .btn {
+  width: 44ch;
+  max-width: 100%;
+}
+.auth-card-width .input {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+}
 
 .btn-secundario {
   background:rgba(222, 220, 220, 0.35);

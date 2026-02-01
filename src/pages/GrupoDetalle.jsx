@@ -1,6 +1,12 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { obtenerVistaPreviaPorCodigo } from "../servicios/grupos.api";
+import {
+  actualizarNombreGrupo,
+  eliminarArchivoGrupo,
+  eliminarGrupo,
+  expulsarMiembro,
+  obtenerVistaPreviaPorCodigo
+} from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import '../estilos/flux.css';
 
@@ -13,6 +19,10 @@ export default function GrupoDetalle() {
   const [mensajeSubida, setMensajeSubida] = useState('');
   const [archivosSubidos, setArchivosSubidos] = useState([]);
   const [mostrarModalArchivos, setMostrarModalArchivos] = useState(false);
+  const [cargandoGrupo, setCargandoGrupo] = useState(true);
+  const [userId, setUserId] = useState(null);
+  const [esAdmin, setEsAdmin] = useState(false);
+  const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -20,13 +30,30 @@ export default function GrupoDetalle() {
       // Si no hay código en URL, no hacemos petición
       if (!codigo) {
         setGrupo(null);
+        setCargandoGrupo(false);
         return;
       }
+      setCargandoGrupo(true);
       // Cargar datos del grupo para renderizar miembros/actividad
       const g = await obtenerVistaPreviaPorCodigo(codigo);
       setGrupo(g);
+      setNuevoNombreGrupo(g?.nombre || "");
+      const miembro = g?.miembros?.find(m => m.user_id === userId);
+      setEsAdmin(Boolean(miembro?.is_admin));
+      setCargandoGrupo(false);
     })();
-  }, [codigo]);
+  }, [codigo, userId]);
+
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabase.auth.getSession();
+      if (sessionError) return;
+      setUserId(session?.user?.id || null);
+    })();
+  }, []);
 
   // Funciones para manejar archivos
   const manejarArchivos = (files) => {
@@ -65,6 +92,13 @@ export default function GrupoDetalle() {
     setMensajeSubida('');
 
     try {
+      const {
+        data: { session },
+        error: sessionError
+      } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      const userId = session?.user?.id || null;
+
       const urls = [];
 
       for (const archivo of archivosSeleccionados) {
@@ -85,6 +119,20 @@ export default function GrupoDetalle() {
           .getPublicUrl(path);
 
         urls.push(urlData.publicUrl);
+
+        if (grupo?.id) {
+          const { error: metaError } = await supabase
+            .from('grupo_archivos')
+            .insert({
+              grupo_id: grupo.id,
+              path,
+              nombre: archivo.name,
+              mime_type: archivo.type,
+              size_bytes: archivo.size,
+              uploader_id: userId
+            });
+          if (metaError) throw metaError;
+        }
       }
 
       setMensajeSubida(`✅ ${archivosSeleccionados.length} archivo(s) subido(s) exitosamente!`);
@@ -109,6 +157,51 @@ export default function GrupoDetalle() {
       setMensajeSubida(`❌ Error al listar archivos: ${error.message}`);
     }
   };
+
+  const manejarGuardarNombre = async () => {
+    if (!grupo) return;
+    if (!nuevoNombreGrupo.trim()) return;
+    await actualizarNombreGrupo({ grupoId: grupo.id, nombre: nuevoNombreGrupo });
+    setGrupo({ ...grupo, nombre: nuevoNombreGrupo.trim() });
+  };
+
+  const manejarExpulsar = async (miembroId) => {
+    if (!grupo) return;
+    await expulsarMiembro({ grupoId: grupo.id, miembroId });
+    const g = await obtenerVistaPreviaPorCodigo(grupo.codigo);
+    setGrupo(g);
+  };
+
+  const manejarEliminarGrupo = async () => {
+    if (!grupo) return;
+    const ok = window.confirm("Eliminar este grupo? Esta accion no se puede deshacer.");
+    if (!ok) return;
+    await eliminarGrupo({ grupoId: grupo.id });
+    navigate("/grupos");
+  };
+
+  const manejarEliminarArchivo = async (fullPath) => {
+    if (!grupo) return;
+    const { error } = await supabase.storage.from('Flux_repositorioGrupos').remove([fullPath]);
+    if (error) {
+      setMensajeSubida(`âŒ Error al eliminar archivo: ${error.message}`);
+      return;
+    }
+    await eliminarArchivoGrupo({ grupoId: grupo.id, path: fullPath });
+    await listarArchivos();
+  };
+
+  // Estado de carga inicial del grupo
+  if (cargandoGrupo) {
+    return (
+      <div className="container">
+        <div className="card">
+          <strong>Cargando grupo...</strong>
+          <p>Esto puede tomar unos segundos.</p>
+        </div>
+      </div>
+    );
+  }
 
   // Estado cuando el código no existe o no se encontró el grupo
   if (!grupo) {
@@ -158,6 +251,22 @@ export default function GrupoDetalle() {
         <p>
           Código del grupo: <strong>{grupo.codigo}</strong>
         </p>
+        {esAdmin && (
+          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+            <label className="label">Editar nombre del grupo</label>
+            <input
+              className="input"
+              value={nuevoNombreGrupo}
+              onChange={(e) => setNuevoNombreGrupo(e.target.value)}
+            />
+            <button className="btn" onClick={manejarGuardarNombre}>
+              Guardar nombre
+            </button>
+            <button className="btn" onClick={manejarEliminarGrupo}>
+              Eliminar grupo
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ height: 16 }} />
@@ -169,7 +278,18 @@ export default function GrupoDetalle() {
           {/* Lista de miembros con scroll */}
           <ul className="miembros-scroll">
             {grupo.miembros.map(m => (
-              <li key={m.id}>{m.nombre}</li>
+              <li key={m.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <span>{m.nombre}{m.is_admin ? " (admin)" : ""}</span>
+                {esAdmin && m.user_id !== userId && (
+                  <button
+                    className="btn"
+                    style={{ width: "auto", padding: "6px 10px" }}
+                    onClick={() => manejarExpulsar(m.id)}
+                  >
+                    Expulsar
+                  </button>
+                )}
+              </li>
             ))}
           </ul>
         </div>
@@ -289,6 +409,15 @@ export default function GrupoDetalle() {
                               </div>
                             </div>
                           </a>
+                          {esAdmin && (
+                            <button
+                              className="btn"
+                              style={{ marginTop: 8 }}
+                              onClick={() => manejarEliminarArchivo(fullPath)}
+                            >
+                              Eliminar archivo
+                            </button>
+                          )}
                         </div>
                       );
                     })}

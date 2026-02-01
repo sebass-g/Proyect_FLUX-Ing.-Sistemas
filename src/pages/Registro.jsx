@@ -7,6 +7,7 @@ function Registro() {
   const [esLogin, setEsLogin] = useState(true) // true = Iniciar Sesión, false = Crear Cuenta
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
 
@@ -40,7 +41,12 @@ function Registro() {
 
       } else {
         // === MODO CREAR CUENTA (REGISTRO) ===
-        
+
+        // 0. Validar display name
+        if (!displayName.trim()) {
+          throw new Error('El display name es obligatorio.')
+        }
+
         // 1. Validar dominio UNIMET
         if (!email.endsWith('@correo.unimet.edu.ve')) {
           throw new Error('Solo se permiten correos @correo.unimet.edu.ve')
@@ -55,7 +61,12 @@ function Registro() {
         // 3. Crear usuario en Supabase
         const { error } = await supabase.auth.signUp({
           email,
-          password
+          password,
+          options: {
+            data: {
+              display_name: displayName.trim()
+            }
+          }
         })
 
         if (error) throw error
@@ -111,6 +122,21 @@ function Registro() {
               required
             />
           </div>
+
+          {/* Input: display name (solo registro) */}
+          {!esLogin && (
+            <div className="mb-4">
+              <label className="label">Display Name</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="Como quieres que te vean"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           {/* Input: contraseña */}
           <div className="mb-4">
