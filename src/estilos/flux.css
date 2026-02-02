@@ -187,6 +187,194 @@ body{
   background: rgba(255,59,48,.10);
 }
 
+.avatar-button{
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  background: rgba(255,255,255,.06);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+  padding: 0;
+  cursor: pointer;
+}
+
+.avatar-img{
+  width:100%;
+  height:100%;
+  object-fit: cover;
+}
+
+.avatar-fallback{
+  width:100%;
+  height:100%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 900;
+  font-size: 12px;
+  color: var(--texto);
+  background: rgba(255,255,255,.08);
+}
+
+.avatar-preview{
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  overflow: hidden;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,.06);
+}
+
+.profile-grid{
+  margin-top: 12px;
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 860px){
+  .profile-grid{ grid-template-columns: 1fr; }
+}
+
+.profile-layout{
+  display:grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  margin-top: 12px;
+  align-items: start;
+}
+@media (max-width: 860px){
+  .profile-layout{ grid-template-columns: 1fr; }
+}
+
+.profile-avatar{
+  display:flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar-hero{
+  width: 140px;
+  height: 140px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  overflow: hidden;
+  position: relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: rgba(255,255,255,.06);
+}
+
+.avatar-edit-button{
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,.2);
+  background: linear-gradient(135deg, var(--naranja), var(--naranja2));
+  color: #1b0d00;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor: pointer;
+}
+
+.password-eye{
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--texto);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor: pointer;
+}
+
+.password-grid{
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.perfil-grid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "cuenta perfil"
+    "password horario";
+  gap: 16px;
+  align-items: stretch;
+}
+.perfil-grid .card{
+  height: 100%;
+}
+.cuenta-card{ grid-area: cuenta; }
+.perfil-card{ grid-area: perfil; }
+.password-card{ grid-area: password; }
+.horario-card{ grid-area: horario; }
+@media (max-width: 860px){
+  .perfil-grid{
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "cuenta"
+      "perfil"
+      "password"
+      "horario";
+  }
+}
+
+.schedule-form{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+@media (max-width: 860px){
+  .schedule-form{ grid-template-columns: 1fr; }
+}
+
+.schedule-actions{
+  display:flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.schedule-list{
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.schedule-item{
+  display:flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--borde);
+  background: rgba(255,255,255,.04);
+}
+
+.schedule-item-actions{
+  display:flex;
+  gap: 8px;
+}
+
 .miembros-scroll{
   margin: 12px 0 0;
   padding-left: 18px;
@@ -294,10 +482,48 @@ body{
 .mb-4 { margin-bottom: 16px; }
 
 /* Estilos para el banner de subir archivos */
+.repo-card{
+  max-width: 520px;
+  margin: 0 auto;
+}
+.repo-title{
+  font-size: 16px;
+}
+.repo-subtitle{
+  margin-top: 8px;
+  margin-bottom: 16px;
+}
+.repo-hint{
+  margin: 4px 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+.repo-list{
+  margin-top: 16px;
+}
+.repo-files{
+  margin-top: 8px;
+  padding-left: 20px;
+}
+.repo-file{
+  margin-bottom: 4px;
+}
+.repo-actions{
+  display:grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+.repo-message{
+  margin-top: 8px;
+  font-size: 12px;
+}
+.repo-message.ok{ color: #2ecc71; }
+.repo-message.error{ color: #ff3b30; }
+
 .drop-area {
   border: 2px dashed var(--borde);
   border-radius: 14px;
-  padding: 12px 8px;
+  padding: 16px 12px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;

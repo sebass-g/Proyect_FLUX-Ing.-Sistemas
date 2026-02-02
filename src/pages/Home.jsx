@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   crearGrupo,
@@ -7,6 +7,16 @@ import {
   unirseAGrupoPorCodigo
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
+
+const DIAS = [
+  { value: 1, label: "Lun" },
+  { value: 2, label: "Mar" },
+  { value: 3, label: "Mie" },
+  { value: 4, label: "Jue" },
+  { value: 5, label: "Vie" },
+  { value: 6, label: "Sab" },
+  { value: 0, label: "Dom" }
+];
 
 export default function Home() {
   const navigate = useNavigate();
@@ -19,6 +29,24 @@ export default function Home() {
   const [vistaPrevia, setVistaPrevia] = useState(null);
   const [error, setError] = useState("");
   const [gruposUsuario, setGruposUsuario] = useState([]);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [horario, setHorario] = useState([]);
+
+  const resumenHorario = useMemo(() => {
+    if (!horario.length) return "Sin horario";
+    return horario
+      .slice()
+      .sort((a, b) =>
+        a.dayOfWeek === b.dayOfWeek
+          ? a.startTime.localeCompare(b.startTime)
+          : a.dayOfWeek - b.dayOfWeek
+      )
+      .map(b => {
+        const diaLabel = DIAS.find(d => d.value === b.dayOfWeek)?.label || "";
+        return `${diaLabel} ${b.startTime}-${b.endTime}`;
+      })
+      .join(", ");
+  }, [horario]);
 
   useEffect(() => {
     let isMounted = true;
@@ -31,8 +59,12 @@ export default function Home() {
       }
       const user = data?.session?.user;
       const displayName = user?.user_metadata?.display_name?.trim();
+      const avatar = user?.user_metadata?.avatar_url?.trim();
+      const schedule = user?.user_metadata?.schedule_blocks;
       if (isMounted) {
         setNombreUsuario(displayName || "");
+        setAvatarUrl(avatar || "");
+        setHorario(Array.isArray(schedule) ? schedule : []);
       }
     }
 
@@ -111,14 +143,30 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <button
-          className="btn"
-          style={{ width: "auto", background: "#f7f3f315", fontSize: "12px" }}
-          onClick={() => supabase.auth.signOut()}
-        >
-          {/* Botón para cerrar sesión */}
-          Cerrar Sesión
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="avatar-button" onClick={() => navigate("/perfil/editar")}>
+            {avatarUrl ? (
+              <img className="avatar-img" src={avatarUrl} alt="Perfil" />
+            ) : (
+              <div className="avatar-fallback">
+                {(nombreUsuario || "U")
+                  .split(" ")
+                  .map(p => p[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+            )}
+          </button>
+          <button
+            className="btn"
+            style={{ width: "auto", background: "#f7f3f315", fontSize: "12px" }}
+            onClick={() => supabase.auth.signOut()}
+          >
+            {/* Botón para cerrar sesión */}
+            Cerrar Sesión
+          </button>
+        </div>
       </div>
 
       {/* Perfil rápido (nombre visible usado en miembros/actividad) */}
@@ -153,6 +201,43 @@ export default function Home() {
                 </div>
               </button>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ height: 16 }} />
+
+      {/* Horario del usuario */}
+      <div className="card">
+        <strong>Mi horario</strong>
+        <div className="label" style={{ marginTop: 8 }}>
+          {resumenHorario}
+        </div>
+        {horario.length > 0 && (
+          <div className="schedule-list">
+            {horario
+              .slice()
+              .sort((a, b) =>
+                a.dayOfWeek === b.dayOfWeek
+                  ? a.startTime.localeCompare(b.startTime)
+                  : a.dayOfWeek - b.dayOfWeek
+              )
+              .map(b => (
+                <div key={b.id} className="schedule-item">
+                  <div>
+                    <strong>
+                      {DIAS.find(d => d.value === b.dayOfWeek)?.label}
+                    </strong>{" "}
+                    {b.startTime} - {b.endTime}
+                    {b.type ? ` · ${b.type}` : ""}
+                  </div>
+                </div>
+              ))}
+          </div>
+        )}
+        {horario.length === 0 && (
+          <div className="label" style={{ marginTop: 8 }}>
+            Aún no tienes bloques guardados.
           </div>
         )}
       </div>
