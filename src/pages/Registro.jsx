@@ -75,6 +75,12 @@ function Registro() {
           texto: '✅ ¡Cuenta creada! Hemos enviado un enlace de verificación a tu correo Unimet.', 
           tipo: 'exito' 
         })
+
+        // Redirigir a modo login después de 2 segundos
+        setTimeout(() => {
+          setEsLogin(true)
+          setMensaje({ texto: '', tipo: '' })
+        }, 2000)
       }
 
     } catch (error) {
