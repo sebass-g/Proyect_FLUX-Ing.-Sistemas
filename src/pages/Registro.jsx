@@ -8,6 +8,7 @@ function Registro() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [mostrarPassword, setMostrarPassword] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
 
@@ -147,14 +148,69 @@ function Registro() {
           {/* Input: contraseña */}
           <div className="mb-4">
             <label className="label">Contraseña</label>
-            <input 
-              className="input" 
-              type="password" 
-              placeholder={esLogin ? "Tu contraseña" : "Mín. 8 carácteres, 1 Mayúscula, 1 Número"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div style={{ position: 'relative' }}>
+              <input 
+                className="input" 
+                type={mostrarPassword ? "text" : "password"} 
+                placeholder={esLogin ? "Tu contraseña" : "Mín. 8 carácteres, 1 Mayúscula, 1 Número"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: 10,
+                  padding: 0,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--texto)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+                aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                aria-pressed={mostrarPassword}
+                onClick={() => setMostrarPassword(v => !v)}
+              >
+                {mostrarPassword ? (
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                ) : (
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-6 0-10-8-10-8a21.77 21.77 0 0 1 5.06-6.94" />
+                    <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c6 0 10 8 10 8a21.79 21.79 0 0 1-3.17 4.26" />
+                    <path d="M14.12 14.12A3 3 0 0 1 9.88 9.88" />
+                    <path d="M1 1l22 22" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Botón Principal (Cambia de color o texto según el modo) */}

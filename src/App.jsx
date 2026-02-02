@@ -8,6 +8,7 @@ import "./estilos/flux.css"; // Importamos los estilos globales de FLUX
 import Registro from "./pages/Registro";
 import Home from "./pages/Home";
 import GrupoDetalle from "./pages/GrupoDetalle";
+import EditarPerfil from "./pages/EditarPerfil";
 
 // Bloquea rutas privadas: si no hay sesión, manda al login
 function RequireAuth({ session, loading, children }) {
@@ -106,6 +107,15 @@ export default function App() {
           <RequireAuth session={session} loading={loadingSession}>
             {/* Detalle de un grupo específico */}
             <GrupoDetalle />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/perfil/editar"
+        element={
+          <RequireAuth session={session} loading={loadingSession}>
+            {/* Pantalla de edición de perfil */}
+            <EditarPerfil />
           </RequireAuth>
         }
       />

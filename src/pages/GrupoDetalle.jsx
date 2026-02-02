@@ -21,6 +21,8 @@ export default function GrupoDetalle() {
   const [mostrarModalArchivos, setMostrarModalArchivos] = useState(false);
   const [cargandoGrupo, setCargandoGrupo] = useState(true);
   const [userId, setUserId] = useState(null);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [esAdmin, setEsAdmin] = useState(false);
   const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
   const inputRef = useRef(null);
@@ -52,6 +54,8 @@ export default function GrupoDetalle() {
       } = await supabase.auth.getSession();
       if (sessionError) return;
       setUserId(session?.user?.id || null);
+      setAvatarUrl(session?.user?.user_metadata?.avatar_url?.trim() || "");
+      setDisplayName(session?.user?.user_metadata?.display_name?.trim() || "");
     })();
   }, []);
 
@@ -229,7 +233,21 @@ export default function GrupoDetalle() {
             <div className="brandSubtitle">Detalle del grupo</div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="avatar-button" onClick={() => navigate("/perfil/editar")}>
+            {avatarUrl ? (
+              <img className="avatar-img" src={avatarUrl} alt="Perfil" />
+            ) : (
+              <div className="avatar-fallback">
+                {(displayName || "U")
+                  .split(" ")
+                  .map(p => p[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase()}
+              </div>
+            )}
+          </button>
           <button className="btn" style={{ width: "auto" }} onClick={() => navigate("/grupos")}>
             {/* Botón para volver a la lista de grupos */}
             Volver
@@ -311,11 +329,11 @@ export default function GrupoDetalle() {
       <div style={{ height: 24 }} />
 
       {/* === BANNER  PARA SUBIR ARCHIVOS === */}
-      <div className="card" style={{ maxWidth: '300px', margin: '0 auto' }}>
-        <strong style={{ fontSize: '14px' }}>Subir Archivos al Repositorio</strong>
+      <div className="card repo-card">
+        <strong className="repo-title">Subir Archivos al Repositorio</strong>
         
         {/* Etiqueta informativa */}
-        <p className="label" style={{ marginTop: '8px', marginBottom: '16px' }}>
+        <p className="label repo-subtitle">
           Formatos: PDF, DOCX, PNG (Máx. 20MB) • Arrastra y suelta o haz click
         </p>
         
@@ -327,7 +345,7 @@ export default function GrupoDetalle() {
           onDragOver={manejarDragOver}
         >
           <div className="drop-content">
-            <p style={{ margin: '4px 0', fontWeight: '600', fontSize: '12px' }}>
+            <p className="repo-hint">
               {archivosSeleccionados.length > 0 
                 ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
                 : 'Arrastra archivos aquí o haz click para seleccionar'
@@ -349,11 +367,11 @@ export default function GrupoDetalle() {
         
         {/* Lista de archivos seleccionados */}
         {archivosSeleccionados.length > 0 && (
-          <div style={{ marginTop: '16px' }}>
+          <div className="repo-list">
             <strong>Archivos seleccionados:</strong>
-            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+            <ul className="repo-files">
               {archivosSeleccionados.map((file, index) => (
-                <li key={index} className="label" style={{ marginBottom: '4px' }}>
+                <li key={index} className="label repo-file">
                   {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
                 </li>
               ))}
@@ -362,14 +380,15 @@ export default function GrupoDetalle() {
         )}
         
         {/* El botón para subir */}
-        <button className="btn" style={{ marginTop: '12px' }} onClick={subirArchivos} disabled={subiendo}>
-          {subiendo ? '⏳ Subiendo...' : '🚀 Subir al repositorio'}
-        </button>
-
-        {/* Botón para ver archivos subidos */}
-        <button className="btn" style={{ marginTop: '8px' }} onClick={listarArchivos}>
-          📂 Ver archivos subidos
-        </button>
+        <div className="repo-actions">
+          <button className="btn btnPrimary" onClick={subirArchivos} disabled={subiendo}>
+            {subiendo ? '⏳ Subiendo...' : 'Subir al repositorio'}
+          </button>
+          {/* Botón para ver archivos subidos */}
+          <button className="btn" onClick={listarArchivos}>
+            Ver archivos subidos
+          </button>
+        </div>
 
         {/* Modal para archivos subidos */}
         {mostrarModalArchivos && (
@@ -432,7 +451,7 @@ export default function GrupoDetalle() {
 
         {/* Mensaje de subida */}
         {mensajeSubida && (
-          <p style={{ marginTop: '8px', fontSize: '12px', color: mensajeSubida.startsWith('✅') ? 'green' : 'red' }}>
+          <p className={`repo-message ${mensajeSubida.startsWith('✅') ? 'ok' : 'error'}`}>
             {mensajeSubida}
           </p>
         )}
