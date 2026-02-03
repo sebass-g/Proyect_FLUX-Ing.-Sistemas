@@ -178,11 +178,29 @@ export default function EditarPerfil() {
   }
 
   function manejarEliminarBloque(id) {
-    setHorario(prev => prev.filter(b => b.id !== id));
-    if (editandoId === id) limpiarBloque();
+    setError("");
+    setOk("");
+    if (!userId) {
+      setError("No hay sesión activa.");
+      return;
+    }
+    supabase
+      .from("bloques_horario")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId)
+      .then(({ error: deleteError }) => {
+        if (deleteError) {
+          setError(deleteError.message);
+          return;
+        }
+        setHorario(prev => prev.filter(b => b.id !== id));
+        if (editandoId === id) limpiarBloque();
+        setOk("Bloque eliminado.");
+      });
   }
 
-  function manejarGuardarBloque() {
+  async function manejarGuardarBloque() {
     setOk("");
     const errorValidacion = validarBloque(
       {
@@ -199,7 +217,30 @@ export default function EditarPerfil() {
       return;
     }
 
+    if (!userId) {
+      setError("No hay sesión activa.");
+      return;
+    }
+
+    setError("");
+
     if (editandoId) {
+      const { error: updateError } = await supabase
+        .from("bloques_horario")
+        .update({
+          day_of_week: dia,
+          start_time: horaInicio,
+          end_time: horaFin,
+          type: tipo || null
+        })
+        .eq("id", editandoId)
+        .eq("user_id", userId);
+
+      if (updateError) {
+        setError(updateError.message);
+        return;
+      }
+
       setHorario(prev =>
         prev.map(b =>
           b.id === editandoId
@@ -214,8 +255,25 @@ export default function EditarPerfil() {
         )
       );
     } else {
+      const nuevoId = crypto.randomUUID();
+      const { error: insertError } = await supabase
+        .from("bloques_horario")
+        .insert({
+          id: nuevoId,
+          user_id: userId,
+          day_of_week: dia,
+          start_time: horaInicio,
+          end_time: horaFin,
+          type: tipo || null
+        });
+
+      if (insertError) {
+        setError(insertError.message);
+        return;
+      }
+
       const nuevo = {
-        id: crypto.randomUUID(),
+        id: nuevoId,
         dayOfWeek: dia,
         startTime: horaInicio,
         endTime: horaFin,
@@ -224,6 +282,7 @@ export default function EditarPerfil() {
       setHorario(prev => [...prev, nuevo]);
     }
     limpiarBloque();
+    setOk("Horario actualizado.");
   }
 
   async function guardarPerfil() {
@@ -306,38 +365,6 @@ export default function EditarPerfil() {
       setError(perfilError.message);
       setGuardando(false);
       return;
-    }
-
-    const { error: deleteBlocksError } = await supabase
-      .from("bloques_horario")
-      .delete()
-      .eq("user_id", userId);
-
-    if (deleteBlocksError) {
-      setError(deleteBlocksError.message);
-      setGuardando(false);
-      return;
-    }
-
-    if (horario.length > 0) {
-      const payloadBloques = horario.map(b => ({
-        id: b.id,
-        user_id: userId,
-        day_of_week: b.dayOfWeek,
-        start_time: b.startTime,
-        end_time: b.endTime,
-        type: b.type || null
-      }));
-
-      const { error: insertBlocksError } = await supabase
-        .from("bloques_horario")
-        .insert(payloadBloques);
-
-      if (insertBlocksError) {
-        setError(insertBlocksError.message);
-        setGuardando(false);
-        return;
-      }
     }
 
     if (avatarPathOriginal && avatarPathOriginal !== avatarPath) {
