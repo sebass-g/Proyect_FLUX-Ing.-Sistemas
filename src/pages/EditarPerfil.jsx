@@ -54,6 +54,10 @@ export default function EditarPerfil() {
   const [creadoEn, setCreadoEn] = useState("");
 
   const [displayName, setDisplayName] = useState("");
+  const [username, setUsername] = useState("");
+  const [telefono, setTelefono] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [apellido, setApellido] = useState("");
   const [career, setCareer] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [avatarPath, setAvatarPath] = useState("");
@@ -112,12 +116,46 @@ export default function EditarPerfil() {
       setUserId(user.id || "");
       setCreadoEn(user.created_at ? new Date(user.created_at).toLocaleString() : "");
       const meta = user.user_metadata || {};
-      setDisplayName(meta.display_name || "");
-      setCareer(meta.career || "");
+
+      const { data: perfilData, error: perfilError } = await supabase
+        .from("profiles")
+        .select("username, telefono, nombre, apellido, career")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (perfilError) {
+        setError("No se pudo cargar el perfil desde la tabla perfiles.");
+      }
+
+      const { data: bloquesData, error: bloquesError } = await supabase
+        .from("bloques_horario")
+        .select("id, day_of_week, start_time, end_time, type")
+        .eq("user_id", user.id);
+
+      if (bloquesError) {
+        setError("No se pudo cargar los bloques de horario.");
+      }
+
+      const perfil = perfilData || {};
+      const displayNameValue = meta.display_name || "";
+      setDisplayName(displayNameValue);
+      setUsername(perfil.username || meta.username || "");
+      setTelefono(perfil.telefono || meta.phone || "");
+      setNombre(perfil.nombre || meta.first_name || "");
+      setApellido(perfil.apellido || meta.last_name || "");
+      setCareer(perfil.career || meta.career || "");
       setAvatarUrl(meta.avatar_url || "");
       setAvatarPath(meta.avatar_path || "");
       setAvatarPathOriginal(meta.avatar_path || "");
-      setHorario(Array.isArray(meta.schedule_blocks) ? meta.schedule_blocks : []);
+      setHorario(
+        (bloquesData || []).map(b => ({
+          id: b.id,
+          dayOfWeek: b.day_of_week,
+          startTime: b.start_time,
+          endTime: b.end_time,
+          type: b.type || ""
+        }))
+      );
       setCargando(false);
     };
     cargar();
@@ -192,7 +230,8 @@ export default function EditarPerfil() {
     setError("");
     setOk("");
 
-    if (!displayName.trim()) {
+    const computedDisplayName = displayName.trim() || `${nombre.trim()} ${apellido.trim()}`.trim();
+    if (!computedDisplayName) {
       setError("El display name es obligatorio.");
       return;
     }
@@ -202,8 +241,9 @@ export default function EditarPerfil() {
         setError("Debes ingresar tu contraseña actual.");
         return;
       }
-      if (password.length < 8) {
-        setError("La contraseña debe tener mínimo 8 caracteres.");
+      const regex = /^(?=.*\d)(?=.*[A-Z]).{8,}$/;
+      if (!regex.test(password)) {
+        setError("La contraseña debe tener: 8 caracteres, 1 mayúscula y 1 número.");
         return;
       }
       if (password !== passwordConfirm) {
@@ -227,11 +267,14 @@ export default function EditarPerfil() {
 
     const payload = {
       data: {
-        display_name: displayName.trim(),
+        display_name: computedDisplayName,
+        username: username.trim(),
+        phone: telefono.trim(),
+        first_name: nombre.trim(),
+        last_name: apellido.trim(),
         career: career.trim(),
         avatar_url: avatarUrl.trim(),
-        avatar_path: avatarPath || "",
-        schedule_blocks: horario
+        avatar_path: avatarPath || ""
       }
     };
     if (password) {
@@ -245,10 +288,63 @@ export default function EditarPerfil() {
       return;
     }
 
+    const { error: perfilError } = await supabase
+      .from("profiles")
+      .upsert(
+        {
+          id: userId,
+          username: username.trim(),
+          telefono: telefono.trim(),
+          nombre: nombre.trim(),
+          apellido: apellido.trim(),
+          career: career.trim()
+        },
+        { onConflict: "id" }
+      );
+
+    if (perfilError) {
+      setError(perfilError.message);
+      setGuardando(false);
+      return;
+    }
+
+    const { error: deleteBlocksError } = await supabase
+      .from("bloques_horario")
+      .delete()
+      .eq("user_id", userId);
+
+    if (deleteBlocksError) {
+      setError(deleteBlocksError.message);
+      setGuardando(false);
+      return;
+    }
+
+    if (horario.length > 0) {
+      const payloadBloques = horario.map(b => ({
+        id: b.id,
+        user_id: userId,
+        day_of_week: b.dayOfWeek,
+        start_time: b.startTime,
+        end_time: b.endTime,
+        type: b.type || null
+      }));
+
+      const { error: insertBlocksError } = await supabase
+        .from("bloques_horario")
+        .insert(payloadBloques);
+
+      if (insertBlocksError) {
+        setError(insertBlocksError.message);
+        setGuardando(false);
+        return;
+      }
+    }
+
     if (avatarPathOriginal && avatarPathOriginal !== avatarPath) {
       await supabase.storage.from(AVATAR_BUCKET).remove([avatarPathOriginal]);
     }
 
+    setDisplayName(computedDisplayName);
     setOk("Perfil actualizado.");
     setPasswordActual("");
     setPassword("");
@@ -518,6 +614,43 @@ export default function EditarPerfil() {
                       className="input"
                       value={displayName}
                       onChange={e => setDisplayName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Username</label>
+                    <input
+                      className="input"
+                      value={username}
+                      onChange={e => setUsername(e.target.value)}
+                      placeholder="Tu usuario"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Teléfono</label>
+                    <input
+                      className="input"
+                      type="tel"
+                      value={telefono}
+                      onChange={e => setTelefono(e.target.value)}
+                      placeholder="Tu número de teléfono"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Nombre</label>
+                    <input
+                      className="input"
+                      value={nombre}
+                      onChange={e => setNombre(e.target.value)}
+                      placeholder="Tu nombre"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Apellido</label>
+                    <input
+                      className="input"
+                      value={apellido}
+                      onChange={e => setApellido(e.target.value)}
+                      placeholder="Tu apellido"
                     />
                   </div>
                   <div>

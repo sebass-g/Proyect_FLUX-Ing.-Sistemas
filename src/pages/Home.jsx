@@ -60,11 +60,26 @@ export default function Home() {
       const user = data?.session?.user;
       const displayName = user?.user_metadata?.display_name?.trim();
       const avatar = user?.user_metadata?.avatar_url?.trim();
-      const schedule = user?.user_metadata?.schedule_blocks;
+      const { data: bloquesData, error: bloquesError } = await supabase
+        .from("bloques_horario")
+        .select("id, day_of_week, start_time, end_time, type")
+        .eq("user_id", user?.id);
+
+      if (bloquesError) {
+        setError("No se pudo cargar el horario.");
+      }
       if (isMounted) {
         setNombreUsuario(displayName || "");
         setAvatarUrl(avatar || "");
-        setHorario(Array.isArray(schedule) ? schedule : []);
+        setHorario(
+          (bloquesData || []).map(b => ({
+            id: b.id,
+            dayOfWeek: b.day_of_week,
+            startTime: b.start_time,
+            endTime: b.end_time,
+            type: b.type || ""
+          }))
+        );
       }
     }
 

@@ -7,7 +7,11 @@ function Registro() {
   const [esLogin, setEsLogin] = useState(true) // true = Iniciar Sesión, false = Crear Cuenta
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [displayName, setDisplayName] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
+  const [username, setUsername] = useState('')
+  const [telefono, setTelefono] = useState('')
+  const [nombre, setNombre] = useState('')
+  const [apellido, setApellido] = useState('')
   const [mostrarPassword, setMostrarPassword] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
@@ -43,9 +47,18 @@ function Registro() {
       } else {
         // === MODO CREAR CUENTA (REGISTRO) ===
 
-        // 0. Validar display name
-        if (!displayName.trim()) {
-          throw new Error('El display name es obligatorio.')
+        // 0. Validar campos extra
+        if (!username.trim()) {
+          throw new Error('El username es obligatorio.')
+        }
+        if (!telefono.trim()) {
+          throw new Error('El teléfono es obligatorio.')
+        }
+        if (!nombre.trim()) {
+          throw new Error('El nombre es obligatorio.')
+        }
+        if (!apellido.trim()) {
+          throw new Error('El apellido es obligatorio.')
         }
 
         // 1. Validar dominio UNIMET
@@ -59,18 +72,45 @@ function Registro() {
           throw new Error('La contraseña debe tener: 8 caracteres, 1 mayúscula y 1 número.')
         }
 
+        if (password !== passwordConfirm) {
+          throw new Error('Las contraseñas no coinciden.')
+        }
+
         // 3. Crear usuario en Supabase
-        const { error } = await supabase.auth.signUp({
+        const displayName = `${nombre.trim()} ${apellido.trim()}`.trim()
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
-              display_name: displayName.trim()
+              display_name: displayName,
+              username: username.trim(),
+              phone: telefono.trim(),
+              first_name: nombre.trim(),
+              last_name: apellido.trim()
             }
           }
         })
 
         if (error) throw error
+
+        const userId = data?.user?.id
+        if (userId) {
+          const { error: perfilError } = await supabase
+            .from('profiles')
+            .upsert(
+              {
+                id: userId,
+                username: username.trim(),
+                telefono: telefono.trim(),
+                nombre: nombre.trim(),
+                apellido: apellido.trim(),
+                career: ''
+              },
+              { onConflict: 'id' }
+            )
+          if (perfilError) throw perfilError
+        }
 
         setMensaje({ 
           texto: '✅ ¡Cuenta creada! Hemos enviado un enlace de verificación a tu correo Unimet.', 
@@ -133,13 +173,55 @@ function Registro() {
           {/* Input: display name (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
-              <label className="label">Display Name</label>
+              <label className="label">Username</label>
               <input
                 className="input"
                 type="text"
-                placeholder="Como quieres que te vean"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="Tu usuario"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          {!esLogin && (
+            <div className="mb-4">
+              <label className="label">Teléfono</label>
+              <input
+                className="input"
+                type="tel"
+                placeholder="Tu número de teléfono"
+                value={telefono}
+                onChange={(e) => setTelefono(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          {!esLogin && (
+            <div className="mb-4">
+              <label className="label">Nombre</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="Tu nombre"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                required
+              />
+            </div>
+          )}
+
+          {!esLogin && (
+            <div className="mb-4">
+              <label className="label">Apellido</label>
+              <input
+                className="input"
+                type="text"
+                placeholder="Tu apellido"
+                value={apellido}
+                onChange={(e) => setApellido(e.target.value)}
                 required
               />
             </div>
@@ -212,6 +294,20 @@ function Registro() {
               </button>
             </div>
           </div>
+
+          {!esLogin && (
+            <div className="mb-4">
+              <label className="label">Confirmar contraseña</label>
+              <input
+                className="input"
+                type={mostrarPassword ? "text" : "password"}
+                placeholder="Repite tu contraseña"
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                required
+              />
+            </div>
+          )}
 
           {/* Botón Principal (Cambia de color o texto según el modo) */}
           <button 
