@@ -309,6 +309,41 @@ body{
   gap: 12px;
 }
 
+.toast-noti{
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--borde);
+  background: rgba(255,255,255,.08);
+  box-shadow: var(--sombra);
+  margin-bottom: 12px;
+}
+.toast-action{
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.toast-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background: linear-gradient(135deg, var(--naranja), var(--naranja2));
+  color: #1b0d00;
+  font-size: 14px;
+}
+.toast-text{
+  font-size: 14px;
+  color: var(--texto);
+}
+
 .perfil-grid{
   display:grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

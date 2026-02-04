@@ -36,7 +36,8 @@ function mapearGrupo(grupo, miembros, actividad) {
     })),
     actividad: (actividad || []).map(a => ({
       mensaje: a.mensaje,
-      fecha: a.fecha
+      fecha: a.fecha,
+      actor_id: a.actor_id
     }))
   };
 }
@@ -106,7 +107,7 @@ export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
       actor_id: user.id,
       mensaje
     })
-    .select("mensaje, fecha")
+    .select("mensaje, fecha, actor_id")
     .single();
   if (errorActividad) throw errorActividad;
 
@@ -132,7 +133,7 @@ export async function obtenerVistaPreviaPorCodigo(codigo) {
 
   const { data: actividad, error: errorActividad } = await supabase
     .from("grupo_actividad")
-    .select("mensaje, fecha")
+    .select("mensaje, fecha, actor_id")
     .eq("grupo_id", grupo.id)
     .order("fecha", { ascending: false });
   if (errorActividad) throw errorActividad;
@@ -183,7 +184,7 @@ export async function unirseAGrupoPorCodigo({ codigo, nombreUsuario }) {
     if (errorMiembro) throw errorMiembro;
     miembro = nuevoMiembro;
 
-    const mensaje = `${displayName} se unio al grupo.`;
+    const mensaje = `${displayName} se ha unido a tu grupo: ${grupo.nombre}`;
     const { error: errorActividad } = await supabase
       .from("grupo_actividad")
       .insert({
@@ -203,7 +204,7 @@ export async function unirseAGrupoPorCodigo({ codigo, nombreUsuario }) {
 
   const { data: actividad, error: errorActividad } = await supabase
     .from("grupo_actividad")
-    .select("mensaje, fecha")
+    .select("mensaje, fecha, actor_id")
     .eq("grupo_id", grupo.id)
     .order("fecha", { ascending: false });
   if (errorActividad) throw errorActividad;

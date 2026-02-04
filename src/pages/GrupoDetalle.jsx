@@ -59,6 +59,7 @@ export default function GrupoDetalle() {
     })();
   }, []);
 
+
   // Funciones para manejar archivos
   const manejarArchivos = (files) => {
     const archivosValidos = Array.from(files).filter(file => {

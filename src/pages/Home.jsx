@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   crearGrupo,
@@ -31,6 +31,11 @@ export default function Home() {
   const [gruposUsuario, setGruposUsuario] = useState([]);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [horario, setHorario] = useState([]);
+  const [toastMensaje, setToastMensaje] = useState("");
+  const [mostrarToast, setMostrarToast] = useState(false);
+  const toastTimeoutRef = useRef(null);
+  const [userId, setUserId] = useState(null);
+  const [toastGrupoId, setToastGrupoId] = useState(null);
 
   const resumenHorario = useMemo(() => {
     if (!horario.length) return "Sin horario";
@@ -71,6 +76,7 @@ export default function Home() {
       if (isMounted) {
         setNombreUsuario(displayName || "");
         setAvatarUrl(avatar || "");
+        setUserId(user?.id || null);
         setHorario(
           (bloquesData || []).map(b => ({
             id: b.id,
@@ -100,6 +106,44 @@ export default function Home() {
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!gruposUsuario.length) return;
+
+    const ids = gruposUsuario.map(g => g.id).join(",");
+    const channel = supabase
+      .channel("grupo-actividad-home")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "grupo_actividad",
+          filter: `grupo_id=in.(${ids})`
+        },
+        payload => {
+          const nuevo = payload.new;
+          if (!nuevo) return;
+          const esJoin = `${nuevo.mensaje || ""}`.includes("se ha unido a tu grupo");
+          const esOtro = nuevo.actor_id && nuevo.actor_id !== userId;
+          if (esJoin && (userId ? esOtro : true)) {
+            setToastMensaje(nuevo.mensaje);
+            setToastGrupoId(nuevo.grupo_id);
+            setMostrarToast(true);
+            if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+            toastTimeoutRef.current = setTimeout(() => {
+              setMostrarToast(false);
+            }, 6000);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [gruposUsuario, userId]);
 
   async function manejarCrearGrupo() {
     // Valida inputs y crea el grupo con código único
@@ -147,6 +191,20 @@ export default function Home() {
 
   return (
     <div className="container">
+      {mostrarToast && (
+        <button
+          className="toast-noti toast-action"
+          onClick={() => {
+            const grupo = gruposUsuario.find(g => g.id === toastGrupoId);
+            if (grupo?.codigo) {
+              navigate(`/grupos/${grupo.codigo}`);
+            }
+          }}
+        >
+          <div className="toast-icon">💬</div>
+          <div className="toast-text">{toastMensaje}</div>
+        </button>
+      )}
       {/* Encabezado con marca y logout */}
       <div className="topbar">
         <div className="brand">
