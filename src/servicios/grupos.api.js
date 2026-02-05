@@ -245,3 +245,34 @@ export async function eliminarArchivoGrupo({ grupoId, path }) {
     .eq("path", path);
   if (error) throw error;
 }
+
+export async function abandonarGrupo({ grupoId }) {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  const { error: deleteError } = await supabase
+    .from("grupo_miembros")
+    .delete()
+    .eq("grupo_id", grupoId)
+    .eq("user_id", user.id);
+  if (deleteError) throw deleteError;
+
+  const { count, error: countError } = await supabase
+    .from("grupo_miembros")
+    .select("id", { count: "exact", head: true })
+    .eq("grupo_id", grupoId);
+  if (countError) throw countError;
+
+  if (!count || count === 0) {
+    const { error: deleteGroupError } = await supabase
+      .from("grupos")
+      .delete()
+      .eq("id", grupoId);
+    if (deleteGroupError) throw deleteGroupError;
+  }
+}

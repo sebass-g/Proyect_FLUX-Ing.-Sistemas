@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   actualizarNombreGrupo,
+  abandonarGrupo,
   eliminarArchivoGrupo,
   eliminarGrupo,
   expulsarMiembro,
@@ -200,6 +201,14 @@ export default function GrupoDetalle() {
     const ok = window.confirm("Eliminar este grupo? Esta accion no se puede deshacer.");
     if (!ok) return;
     await eliminarGrupo({ grupoId: grupo.id });
+    navigate("/grupos");
+  };
+
+  const manejarAbandonarGrupo = async () => {
+    if (!grupo) return;
+    const ok = window.confirm("Abandonar este grupo? Si eres el último miembro, el grupo se eliminará.");
+    if (!ok) return;
+    await abandonarGrupo({ grupoId: grupo.id });
     navigate("/grupos");
   };
 
@@ -662,6 +671,12 @@ export default function GrupoDetalle() {
           </p>
         )}
       </div>
+
+      <div style={{ height: 16 }} />
+
+      <button className="btn" onClick={manejarAbandonarGrupo}>
+        Abandonar grupo
+      </button>
     </div>
   );
 }

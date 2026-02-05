@@ -208,7 +208,7 @@ body{
   width:100%;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(37, 52, 63, 0.35);
+  border: 2px solid var(--primario);
   background: rgba(255, 255, 255, 0.10);
   color: var(--texto);
   cursor:pointer;
@@ -223,7 +223,7 @@ body{
 }
 
 .btnPrimary{
-  border: 1px solid transparent;
+  border: 2px solid var(--primario);
   background: linear-gradient(135deg, var(--primario), var(--primario-oscuro));
   color: #160b00;
   box-shadow: 0 14px 28px rgba(255, 155, 81, 0.35);
@@ -679,7 +679,7 @@ input[type="time"].input{
   margin-top: 8px;
   font-size: 12px;
 }
-.repo-message.ok{ color: var(--primario); }
+.repo-message.ok{ color: #000000; }
 .repo-message.error{ color: var(--error); }
 
 .drop-area {
