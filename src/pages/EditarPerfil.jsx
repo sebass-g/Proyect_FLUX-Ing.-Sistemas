@@ -61,7 +61,6 @@ export default function EditarPerfil() {
   const [career, setCareer] = useState("");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [avatarPath, setAvatarPath] = useState("");
-  const [avatarPathOriginal, setAvatarPathOriginal] = useState("");
   const [avatarUploading, setAvatarUploading] = useState(false);
 
   const [passwordActual, setPasswordActual] = useState("");
@@ -144,9 +143,27 @@ export default function EditarPerfil() {
       setNombre(perfil.nombre || meta.first_name || "");
       setApellido(perfil.apellido || meta.last_name || "");
       setCareer(perfil.career || meta.career || "");
-      setAvatarUrl(meta.avatar_url || "");
+      let avatarPublicUrl = "";
+      const { data: avatarData } = supabase.storage
+        .from(AVATAR_BUCKET)
+        .getPublicUrl(`avatars/${user.id}`);
+      avatarPublicUrl = avatarData?.publicUrl || "";
+
+      if (!avatarPublicUrl) {
+        const { data: files } = await supabase.storage
+          .from(AVATAR_BUCKET)
+          .list(`avatars/${user.id}`, { limit: 1, offset: 0, sortBy: { column: "created_at", order: "desc" } });
+        const file = (files || [])[0];
+        if (file) {
+          const { data: urlData } = supabase.storage
+            .from(AVATAR_BUCKET)
+            .getPublicUrl(`avatars/${user.id}/${file.name}`);
+          avatarPublicUrl = urlData?.publicUrl || "";
+        }
+      }
+
+      setAvatarUrl(meta.avatar_url || avatarPublicUrl || "");
       setAvatarPath(meta.avatar_path || "");
-      setAvatarPathOriginal(meta.avatar_path || "");
       setHorario(
         (bloquesData || []).map(b => ({
           id: b.id,
@@ -201,88 +218,92 @@ export default function EditarPerfil() {
   }
 
   async function manejarGuardarBloque() {
-    setOk("");
-    const errorValidacion = validarBloque(
-      {
-        dayOfWeek: dia,
-        startTime: horaInicio,
-        endTime: horaFin,
-        type: tipo
-      },
-      horario,
-      editandoId
-    );
-    if (errorValidacion) {
-      setError(errorValidacion);
-      return;
-    }
-
-    if (!userId) {
-      setError("No hay sesión activa.");
-      return;
-    }
-
-    setError("");
-
-    if (editandoId) {
-      const { error: updateError } = await supabase
-        .from("bloques_horario")
-        .update({
-          day_of_week: dia,
-          start_time: horaInicio,
-          end_time: horaFin,
-          type: tipo || null
-        })
-        .eq("id", editandoId)
-        .eq("user_id", userId);
-
-      if (updateError) {
-        setError(updateError.message);
-        return;
-      }
-
-      setHorario(prev =>
-        prev.map(b =>
-          b.id === editandoId
-            ? {
-                ...b,
-                dayOfWeek: dia,
-                startTime: horaInicio,
-                endTime: horaFin,
-                type: tipo
-              }
-            : b
-        )
+    try {
+      setOk("");
+      const errorValidacion = validarBloque(
+        {
+          dayOfWeek: dia,
+          startTime: horaInicio,
+          endTime: horaFin,
+          type: tipo
+        },
+        horario,
+        editandoId
       );
-    } else {
-      const nuevoId = crypto.randomUUID();
-      const { error: insertError } = await supabase
-        .from("bloques_horario")
-        .insert({
-          id: nuevoId,
-          user_id: userId,
-          day_of_week: dia,
-          start_time: horaInicio,
-          end_time: horaFin,
-          type: tipo || null
-        });
-
-      if (insertError) {
-        setError(insertError.message);
+      if (errorValidacion) {
+        setError(errorValidacion);
         return;
       }
 
-      const nuevo = {
-        id: nuevoId,
-        dayOfWeek: dia,
-        startTime: horaInicio,
-        endTime: horaFin,
-        type: tipo
-      };
-      setHorario(prev => [...prev, nuevo]);
+      if (!userId) {
+        setError("No hay sesión activa.");
+        return;
+      }
+
+      setError("");
+
+      if (editandoId) {
+        const { error: updateError } = await supabase
+          .from("bloques_horario")
+          .update({
+            day_of_week: dia,
+            start_time: horaInicio,
+            end_time: horaFin,
+            type: tipo || null
+          })
+          .eq("id", editandoId)
+          .eq("user_id", userId);
+
+        if (updateError) {
+          setError(updateError.message);
+          return;
+        }
+
+        setHorario(prev =>
+          prev.map(b =>
+            b.id === editandoId
+              ? {
+                  ...b,
+                  dayOfWeek: dia,
+                  startTime: horaInicio,
+                  endTime: horaFin,
+                  type: tipo
+                }
+              : b
+          )
+        );
+      } else {
+        const { data: insertData, error: insertError } = await supabase
+          .from("bloques_horario")
+          .insert({
+            user_id: userId,
+            day_of_week: dia,
+            start_time: horaInicio,
+            end_time: horaFin,
+            type: tipo || null
+          })
+          .select("id, day_of_week, start_time, end_time, type")
+          .single();
+
+        if (insertError) {
+          setError(insertError.message);
+          return;
+        }
+
+        const nuevo = {
+          id: insertData.id,
+          dayOfWeek: insertData.day_of_week,
+          startTime: insertData.start_time,
+          endTime: insertData.end_time,
+          type: insertData.type || ""
+        };
+        setHorario(prev => [...prev, nuevo]);
+      }
+      limpiarBloque();
+      setOk("Horario actualizado.");
+    } catch (e) {
+      setError(e?.message || "Error inesperado al guardar el horario.");
     }
-    limpiarBloque();
-    setOk("Horario actualizado.");
   }
 
   async function guardarPerfil() {
@@ -367,16 +388,11 @@ export default function EditarPerfil() {
       return;
     }
 
-    if (avatarPathOriginal && avatarPathOriginal !== avatarPath) {
-      await supabase.storage.from(AVATAR_BUCKET).remove([avatarPathOriginal]);
-    }
-
     setDisplayName(computedDisplayName);
     setOk("Perfil actualizado.");
     setPasswordActual("");
     setPassword("");
     setPasswordConfirm("");
-    setAvatarPathOriginal(avatarPath);
     setGuardando(false);
   }
 
@@ -394,12 +410,11 @@ export default function EditarPerfil() {
     setError("");
     setOk("");
     setAvatarUploading(true);
-    const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const path = `avatars/${userId}/${Date.now()}-${safeName}`;
+    const path = `avatars/${userId}`;
 
     const { error: uploadError } = await supabase.storage
       .from(AVATAR_BUCKET)
-      .upload(path, file);
+      .upload(path, file, { upsert: true });
     if (uploadError) {
       setError(uploadError.message);
       setAvatarUploading(false);
@@ -694,7 +709,12 @@ export default function EditarPerfil() {
               <div className="profile-avatar">
                 <div className="avatar-hero">
                   {avatarUrl ? (
-                    <img className="avatar-img" src={avatarUrl} alt="Foto de perfil" />
+                    <img
+                      className="avatar-img"
+                      src={avatarUrl}
+                      alt="Foto de perfil"
+                      onError={() => setAvatarUrl("")}
+                    />
                   ) : (
                     <div className="avatar-fallback">{iniciales}</div>
                   )}

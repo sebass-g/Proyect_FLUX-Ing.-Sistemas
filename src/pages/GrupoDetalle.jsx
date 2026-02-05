@@ -26,6 +26,24 @@ export default function GrupoDetalle() {
   const [esAdmin, setEsAdmin] = useState(false);
   const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
   const inputRef = useRef(null);
+  const [mostrarPerfil, setMostrarPerfil] = useState(false);
+  const [miembroActivo, setMiembroActivo] = useState(null);
+  const [perfilMiembro, setPerfilMiembro] = useState(null);
+  const [avatarMiembroUrl, setAvatarMiembroUrl] = useState("");
+  const [avatarFallbackTried, setAvatarFallbackTried] = useState(false);
+  const [horarioMiembro, setHorarioMiembro] = useState([]);
+  const [cargandoPerfil, setCargandoPerfil] = useState(false);
+  const [errorPerfil, setErrorPerfil] = useState("");
+
+  const DIAS = [
+    { value: 1, label: "Lun" },
+    { value: 2, label: "Mar" },
+    { value: 3, label: "Mie" },
+    { value: 4, label: "Jue" },
+    { value: 5, label: "Vie" },
+    { value: 6, label: "Sab" },
+    { value: 0, label: "Dom" }
+  ];
 
   useEffect(() => {
     (async () => {
@@ -196,6 +214,79 @@ export default function GrupoDetalle() {
     await listarArchivos();
   };
 
+  const buscarAvatarPorCarpeta = async (miembroId) => {
+    const { data: files } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .list(`avatars/${miembroId}`, { limit: 1, offset: 0, sortBy: { column: "created_at", order: "desc" } });
+
+    const file = (files || [])[0];
+    if (!file) return "";
+    const { data: urlData } = supabase.storage
+      .from("Flux_repositorioGrupos")
+      .getPublicUrl(`avatars/${miembroId}/${file.name}`);
+    return urlData?.publicUrl || "";
+  };
+
+  const cargarPerfilMiembro = async (miembro) => {
+    if (!miembro?.user_id) return;
+    setMiembroActivo(miembro);
+    setPerfilMiembro(null);
+    setHorarioMiembro([]);
+    setAvatarMiembroUrl("");
+    setAvatarFallbackTried(false);
+    setErrorPerfil("");
+    setCargandoPerfil(true);
+    setMostrarPerfil(true);
+
+    let perfil = null;
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("nombre, apellido, career")
+        .eq("id", miembro.user_id)
+        .maybeSingle();
+      if (error) throw error;
+      perfil = data;
+    } catch (_e) {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("nombre, apellido, career")
+        .eq("id", miembro.user_id)
+        .maybeSingle();
+      if (error) {
+        setErrorPerfil("No se pudo cargar el perfil.");
+      } else {
+        perfil = data;
+      }
+    }
+
+    const { data: bloquesData, error: bloquesError } = await supabase
+      .from("bloques_horario")
+      .select("id, day_of_week, start_time, end_time, type")
+      .eq("user_id", miembro.user_id);
+
+    if (bloquesError) {
+      setErrorPerfil("No se pudo cargar el horario del miembro.");
+    }
+
+    const { data: avatarData } = supabase.storage
+      .from("Flux_repositorioGrupos")
+      .getPublicUrl(`avatars/${miembro.user_id}`);
+
+    setAvatarMiembroUrl(avatarData?.publicUrl || "");
+    setPerfilMiembro(perfil);
+    setHorarioMiembro(
+      (bloquesData || []).map(b => ({
+        id: b.id,
+        dayOfWeek: b.day_of_week,
+        startTime: b.start_time,
+        endTime: b.end_time,
+        type: b.type || ""
+      }))
+    );
+    setCargandoPerfil(false);
+  };
+
   // Estado de carga inicial del grupo
   if (cargandoGrupo) {
     return (
@@ -264,6 +355,110 @@ export default function GrupoDetalle() {
         </div>
       </div>
 
+      {mostrarPerfil && (
+        <div className="modal-overlay" onClick={() => setMostrarPerfil(false)}>
+          <div className="modal-content member-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Perfil del miembro</h3>
+              <button className="modal-close" onClick={() => setMostrarPerfil(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              {cargandoPerfil && (
+                <div className="card" style={{ margin: 0 }}>
+                  <strong>Cargando perfil...</strong>
+                </div>
+              )}
+              {!cargandoPerfil && (
+                <div className="member-card">
+                  <div className="member-info">
+                    <div className="member-name">
+                      {miembroActivo?.nombre || "Miembro"}
+                      {miembroActivo?.is_admin ? " (admin)" : ""}
+                    </div>
+                    <div className="member-field">
+                      <span className="label">Nombre</span>
+                      <div>
+                        {(perfilMiembro?.nombre || "-")} {(perfilMiembro?.apellido || "")}
+                      </div>
+                    </div>
+                    <div className="member-field">
+                      <span className="label">Carrera</span>
+                      <div>{perfilMiembro?.career || "No especificada"}</div>
+                    </div>
+                    {errorPerfil && (
+                      <div className="alert" style={{ marginTop: 8 }}>
+                        {errorPerfil}
+                      </div>
+                    )}
+                  </div>
+                  <div className="member-avatar">
+                    {avatarMiembroUrl ? (
+                      <img
+                        className="member-avatar-img"
+                        src={avatarMiembroUrl}
+                        alt=""
+                        onError={async () => {
+                          if (avatarFallbackTried) {
+                            setAvatarMiembroUrl("");
+                            return;
+                          }
+                          setAvatarFallbackTried(true);
+                          const fallback = await buscarAvatarPorCarpeta(miembroActivo?.user_id);
+                          setAvatarMiembroUrl(fallback);
+                        }}
+                      />
+                    ) : (
+                      <div className="member-avatar-fallback">
+                        {(miembroActivo?.nombre || "U")
+                          .split(" ")
+                          .map(p => p[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {!cargandoPerfil && (
+                <div className="member-schedule">
+                  <strong>Horario</strong>
+                  {horarioMiembro.length === 0 ? (
+                    <div className="label" style={{ marginTop: 8 }}>
+                      Este miembro aún no tiene bloques guardados.
+                    </div>
+                  ) : (
+                    <div className="schedule-list">
+                      {horarioMiembro
+                        .slice()
+                        .sort((a, b) =>
+                          a.dayOfWeek === b.dayOfWeek
+                            ? a.startTime.localeCompare(b.startTime)
+                            : a.dayOfWeek - b.dayOfWeek
+                        )
+                        .map(b => (
+                          <div key={b.id} className="schedule-item">
+                            <div>
+                              <strong>
+                                {DIAS.find(d => d.value === b.dayOfWeek)?.label}
+                              </strong>{" "}
+                              {b.startTime} - {b.endTime}
+                              {b.type ? ` · ${b.type}` : ""}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Resumen del grupo (Se mantiene tu diseño original) */}
       <div className="card">
         <h1>{grupo.nombre}</h1>
@@ -297,13 +492,23 @@ export default function GrupoDetalle() {
           {/* Lista de miembros con scroll */}
           <ul className="miembros-scroll">
             {grupo.miembros.map(m => (
-              <li key={m.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span>{m.nombre}{m.is_admin ? " (admin)" : ""}</span>
+              <li key={m.id} className="member-row">
+                <button
+                  className="member-item"
+                  onClick={() => cargarPerfilMiembro(m)}
+                >
+                  <span className="member-item-name">
+                    {m.nombre}{m.is_admin ? " (admin)" : ""}
+                  </span>
+                  <span className="member-item-hint">Ver perfil</span>
+                </button>
                 {esAdmin && m.user_id !== userId && (
                   <button
-                    className="btn"
-                    style={{ width: "auto", padding: "6px 10px" }}
-                    onClick={() => manejarExpulsar(m.id)}
+                    className="btn member-kick"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      manejarExpulsar(m.id);
+                    }}
                   >
                     Expulsar
                   </button>

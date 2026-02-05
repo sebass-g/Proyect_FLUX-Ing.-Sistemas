@@ -205,7 +205,7 @@ export default function Home() {
           <div className="toast-text">{toastMensaje}</div>
         </button>
       )}
-      {/* Encabezado con marca y logout */}
+      {/* Encabezado con marca, bienvenida y acciones */}
       <div className="topbar">
         <div className="brand">
           <div className="logoDot" />
@@ -216,8 +216,26 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="avatar-button" onClick={() => navigate("/perfil/editar")}>
+        <div className="topbar-right">
+          <div className="topbar-welcome">
+            <div className="welcome-title">
+              Bienvenido{nombreUsuario ? `, ${nombreUsuario}` : ""}
+            </div>
+            <div className="welcome-subtitle">
+              Ya puedes crear tu grupo o unirte con un código.
+            </div>
+            <button
+              className="btn btn-logout"
+              onClick={() => supabase.auth.signOut()}
+            >
+              Cerrar Sesión
+            </button>
+          </div>
+          <button
+            className="avatar-button avatar-big"
+            onClick={() => navigate("/perfil/editar")}
+            aria-label="Ir a perfil"
+          >
             {avatarUrl ? (
               <img className="avatar-img" src={avatarUrl} alt="Perfil" />
             ) : (
@@ -231,22 +249,6 @@ export default function Home() {
               </div>
             )}
           </button>
-          <button
-            className="btn"
-            style={{ width: "auto", background: "#f7f3f315", fontSize: "12px" }}
-            onClick={() => supabase.auth.signOut()}
-          >
-            {/* Botón para cerrar sesión */}
-            Cerrar Sesión
-          </button>
-        </div>
-      </div>
-
-      {/* Perfil rápido (nombre visible usado en miembros/actividad) */}
-      <div className="card">
-        <strong>Bienvenido{nombreUsuario ? `, ${nombreUsuario}` : ""}</strong>
-        <div className="label" style={{ marginBottom: 0 }}>
-          Ya puedes crear tu grupo o unirte con un código.
         </div>
       </div>
 
@@ -254,7 +256,7 @@ export default function Home() {
 
       {/* Grupos del usuario */}
       <div className="card">
-        <strong>Mis grupos</strong>
+        <strong>📚 Mis grupos</strong>
         {gruposUsuario.length === 0 ? (
           <div className="label" style={{ marginBottom: 0 }}>
             Aun no perteneces a ningun grupo.
@@ -282,7 +284,7 @@ export default function Home() {
 
       {/* Horario del usuario */}
       <div className="card">
-        <strong>Mi horario</strong>
+        <strong>🗓️ Mi horario</strong>
         <div className="label" style={{ marginTop: 8 }}>
           {resumenHorario}
         </div>
@@ -320,7 +322,7 @@ export default function Home() {
       {/* Bloques principales: crear grupo / unirse por código */}
       <div className="grid2">
         <div className="card">
-          <strong>Crear grupo</strong>
+          <strong>✨ Crear grupo</strong>
           <label className="label">Nombre del grupo</label>
           <input
             className="input"
@@ -335,7 +337,7 @@ export default function Home() {
         </div>
 
         <div className="card">
-          <strong>Unirse por código</strong>
+          <strong>🔑 Unirse por código</strong>
           <label className="label">Código del grupo</label>
           <input
             className="input"
@@ -348,7 +350,7 @@ export default function Home() {
           {vistaPrevia && (
             <div className="preview">
               {/* Vista previa del grupo encontrado por código */}
-              <div><strong>Vista previa</strong></div>
+              <div><strong>🔍 Vista previa</strong></div>
               <div>{vistaPrevia.nombre}</div>
               <div>
                 Miembros: {vistaPrevia.miembros.map(m => m.nombre).join(", ")}
