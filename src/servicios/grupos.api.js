@@ -28,6 +28,7 @@ function mapearGrupo(grupo, miembros, actividad) {
     id: grupo.id,
     nombre: grupo.nombre,
     codigo: grupo.codigo,
+    creadorId: grupo.creador_id,
     miembros: (miembros || []).map(m => ({
       id: m.id,
       nombre: m.display_name,
@@ -53,13 +54,17 @@ export async function listarGruposDelUsuario() {
 
   const { data, error } = await supabase
     .from("grupo_miembros")
-    .select("grupo_id, grupos ( id, nombre, codigo, created_at )")
+    .select("grupo_id, is_admin, grupos ( id, nombre, codigo, creador_id, created_at )")
     .eq("user_id", user.id)
     .order("joined_at", { ascending: false });
   if (error) throw error;
 
   return (data || [])
-    .map(item => item.grupos)
+    .map(item => ({
+      ...item.grupos,
+      creadorId: item.grupos?.creador_id || null,
+      isAdmin: Boolean(item.is_admin)
+    }))
     .filter(Boolean);
 }
 

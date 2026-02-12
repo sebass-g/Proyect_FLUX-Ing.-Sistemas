@@ -19,6 +19,7 @@ function generarCodigo(longitud = 6) {
 
 export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
   const grupos = cargarGrupos();
+  const userId = crypto.randomUUID();
 
   let codigo = generarCodigo();
   while (grupos.some(g => g.codigo === codigo)) {
@@ -29,11 +30,13 @@ export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
     id: crypto.randomUUID(),
     nombre: nombreGrupo.trim(),
     codigo,
-    miembros: [{ id: crypto.randomUUID(), nombre: nombreUsuario }],
+    creadorId: userId,
+    miembros: [{ id: crypto.randomUUID(), nombre: nombreUsuario, user_id: userId, is_admin: true }],
     actividad: [
       {
         mensaje: `${nombreUsuario} creó el grupo.`,
-        fecha: new Date().toISOString()
+        fecha: new Date().toISOString(),
+        actor_id: userId
       }
     ]
   };
@@ -70,12 +73,15 @@ export async function unirseAGrupoPorCodigo({ codigo, nombreUsuario }) {
   if (!existe) {
     grupo.miembros.push({
       id: crypto.randomUUID(),
-      nombre: nombreUsuario
+      nombre: nombreUsuario,
+      user_id: crypto.randomUUID(),
+      is_admin: false
     });
 
     grupo.actividad.unshift({
       mensaje: `${nombreUsuario} se unió al grupo.`,
-      fecha: new Date().toISOString()
+      fecha: new Date().toISOString(),
+      actor_id: null
     });
 
     grupos[indice] = grupo;

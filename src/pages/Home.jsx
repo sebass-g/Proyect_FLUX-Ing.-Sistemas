@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  abandonarGrupo,
+  actualizarNombreGrupo,
   crearGrupo,
   listarGruposDelUsuario,
   obtenerVistaPreviaPorCodigo,
   unirseAGrupoPorCodigo
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
+import { obtenerColorGrupo } from "../utils/groupColors";
 
 const DIAS = [
   { value: 1, label: "Lun" },
@@ -20,22 +23,27 @@ const DIAS = [
 
 export default function Home() {
   const navigate = useNavigate();
-  // Datos que el usuario escribe en pantalla
   const [nombreUsuario, setNombreUsuario] = useState("");
-  const [nombreGrupo, setNombreGrupo] = useState("");
-
-  // Estados para unirse por código
   const [codigoIngreso, setCodigoIngreso] = useState("");
+  const [nombreGrupo, setNombreGrupo] = useState("");
   const [vistaPrevia, setVistaPrevia] = useState(null);
   const [error, setError] = useState("");
   const [gruposUsuario, setGruposUsuario] = useState([]);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [horario, setHorario] = useState([]);
-  const [toastMensaje, setToastMensaje] = useState("");
   const [mostrarToast, setMostrarToast] = useState(false);
-  const toastTimeoutRef = useRef(null);
-  const [userId, setUserId] = useState(null);
+  const [toastMensaje, setToastMensaje] = useState("");
   const [toastGrupoId, setToastGrupoId] = useState(null);
+  const [userId, setUserId] = useState(null);
+  const [menuAbierto, setMenuAbierto] = useState(false);
+  const [fabAbierto, setFabAbierto] = useState(false);
+  const [accionAbierta, setAccionAbierta] = useState("");
+  const [busquedaAbierta, setBusquedaAbierta] = useState(false);
+  const [busquedaTexto, setBusquedaTexto] = useState("");
+  const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
+  const [grupoEditando, setGrupoEditando] = useState(null);
+  const [nuevoNombreGrupoEditar, setNuevoNombreGrupoEditar] = useState("");
+  const toastTimeoutRef = useRef(null);
 
   const resumenHorario = useMemo(() => {
     if (!horario.length) return "Sin horario";
@@ -53,13 +61,45 @@ export default function Home() {
       .join(", ");
   }, [horario]);
 
+  const horarioDrawer = useMemo(() => {
+    return horario
+      .slice()
+      .sort((a, b) =>
+        a.startTime === b.startTime
+          ? a.dayOfWeek - b.dayOfWeek
+          : a.startTime.localeCompare(b.startTime)
+      )
+      .map(b => ({
+        ...b,
+        diaLabel: DIAS.find(d => d.value === b.dayOfWeek)?.label || "",
+        nombreClase: b.type?.trim() || "Clase"
+      }));
+  }, [horario]);
+
+  const gruposFiltrados = useMemo(() => {
+    const q = busquedaTexto.trim().toLowerCase();
+    if (!q) return gruposUsuario;
+    return gruposUsuario.filter(g =>
+      `${g.nombre || ""} ${g.codigo || ""}`.toLowerCase().includes(q)
+    );
+  }, [busquedaTexto, gruposUsuario]);
+
+  async function cargarGrupos() {
+    try {
+      const grupos = await listarGruposDelUsuario();
+      setGruposUsuario(grupos);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   useEffect(() => {
     let isMounted = true;
 
-    async function cargarDisplayName() {
+    async function cargarContexto() {
       const { data, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) {
-        setError("No se pudo leer la sesion.");
+        setError("No se pudo leer la sesión.");
         return;
       }
       const user = data?.session?.user;
@@ -73,6 +113,7 @@ export default function Home() {
       if (bloquesError) {
         setError("No se pudo cargar el horario.");
       }
+
       if (isMounted) {
         setNombreUsuario(displayName || "");
         setAvatarUrl(avatar || "");
@@ -87,21 +128,11 @@ export default function Home() {
           }))
         );
       }
+
+      await cargarGrupos();
     }
 
-    async function cargarGrupos() {
-      try {
-        const grupos = await listarGruposDelUsuario();
-        if (isMounted) {
-          setGruposUsuario(grupos);
-        }
-      } catch (e) {
-        setError(e.message);
-      }
-    }
-
-    cargarDisplayName();
-    cargarGrupos();
+    cargarContexto();
     return () => {
       isMounted = false;
     };
@@ -145,22 +176,30 @@ export default function Home() {
     };
   }, [gruposUsuario, userId]);
 
-  async function manejarCrearGrupo() {
-    // Valida inputs y crea el grupo con código único
-    setError("");
-    if (!nombreUsuario.trim()) return setError("No se encontro tu display name.");
-    if (!nombreGrupo.trim()) return setError("Ingrese el nombre del grupo.");
+  useEffect(() => {
+    if (!menuGrupoAbiertoId) return;
 
-    const grupo = await crearGrupo({
-      nombreGrupo,
-      nombreUsuario
-    });
+    const onPointerDown = event => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".classroom-card-menu-wrap")) {
+        return;
+      }
+      setMenuGrupoAbiertoId(null);
+    };
 
-    navigate(`/grupos/${grupo.codigo}`);
-  }
+    const onKeyDown = event => {
+      if (event.key === "Escape") setMenuGrupoAbiertoId(null);
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuGrupoAbiertoId]);
 
   async function manejarCambioCodigo(valor) {
-    // Normaliza el código y busca una vista previa del grupo
     const codigo = valor.toUpperCase();
     setCodigoIngreso(codigo);
 
@@ -172,10 +211,26 @@ export default function Home() {
     }
   }
 
-  async function manejarUnirse() {
-    // Valida inputs y une al usuario al grupo
+  async function manejarCrearGrupo() {
     setError("");
-    if (!nombreUsuario.trim()) return setError("No se encontro tu display name.");
+    if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
+    if (!nombreGrupo.trim()) return setError("Ingrese el nombre del grupo.");
+
+    const grupo = await crearGrupo({
+      nombreGrupo,
+      nombreUsuario
+    });
+
+      setNombreGrupo("");
+      setAccionAbierta("");
+      setFabAbierto(false);
+      await cargarGrupos();
+      navigate(`/grupos/${grupo.codigo}`);
+  }
+
+  async function manejarUnirse() {
+    setError("");
+    if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
     if (!codigoIngreso.trim()) return setError("Ingrese el código del grupo.");
 
     try {
@@ -183,191 +238,406 @@ export default function Home() {
         codigo: codigoIngreso,
         nombreUsuario
       });
+      setCodigoIngreso("");
+      setVistaPrevia(null);
+      setAccionAbierta("");
+      setFabAbierto(false);
+      await cargarGrupos();
       navigate(`/grupos/${grupo.codigo}`);
     } catch (e) {
       setError(e.message);
     }
   }
 
+  async function manejarAbandonarGrupoHome(grupo) {
+    const ok = window.confirm(`¿Abandonar el grupo "${grupo.nombre}"?`);
+    if (!ok) return;
+    try {
+      await abandonarGrupo({ grupoId: grupo.id });
+      setMenuGrupoAbiertoId(null);
+      await cargarGrupos();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function manejarGuardarNombreGrupoHome() {
+    if (!grupoEditando?.id) return;
+    if (!nuevoNombreGrupoEditar.trim()) return;
+    try {
+      await actualizarNombreGrupo({
+        grupoId: grupoEditando.id,
+        nombre: nuevoNombreGrupoEditar.trim()
+      });
+      setGrupoEditando(null);
+      setNuevoNombreGrupoEditar("");
+      await cargarGrupos();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   return (
-    <div className="container">
+    <div className="container home-container">
       {mostrarToast && (
         <button
           className="toast-noti toast-action"
           onClick={() => {
             const grupo = gruposUsuario.find(g => g.id === toastGrupoId);
-            if (grupo?.codigo) {
-              navigate(`/grupos/${grupo.codigo}`);
-            }
+            if (grupo?.codigo) navigate(`/grupos/${grupo.codigo}`);
           }}
         >
           <div className="toast-icon">💬</div>
           <div className="toast-text">{toastMensaje}</div>
         </button>
       )}
-      {/* Encabezado con marca, bienvenida y acciones */}
-      <div className="topbar">
-        <div className="brand">
-          <div className="logoDot" />
-          <div>
-            <div className="brandTitle">FLUX</div>
-            <div className="brandSubtitle">
-              Grupos de estudio · Coordinación sin caos
-            </div>
+
+      <div className="home-header-strip">
+        <button
+          className="menu-button menu-button-primary"
+          aria-label="Abrir menú"
+          onClick={() => setMenuAbierto(true)}
+        >
+          ☰
+        </button>
+        <div className="home-header-title-wrap">
+          <div className="home-header-title">FLUX</div>
+          <div className="logoDot home-header-dot" />
+        </div>
+      </div>
+
+      <div className="classroom-grid">
+        {gruposUsuario.map(grupo => {
+          const iniciales = (grupo.nombre || "G")
+            .split(" ")
+            .map(p => p[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
+          const color = obtenerColorGrupo(grupo.codigo || grupo.nombre || "");
+
+          return (
+            <button
+              key={grupo.id}
+              className="classroom-card"
+              onClick={() => navigate(`/grupos/${grupo.codigo}`)}
+            >
+              <div
+                className="classroom-card-banner"
+                style={{ "--banner-a": color.a, "--banner-b": color.b }}
+              >
+                <div className="classroom-card-menu-wrap">
+                  <button
+                    className="classroom-card-kebab"
+                    aria-label="Opciones del grupo"
+                    onClick={e => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMenuGrupoAbiertoId(prev => (prev === grupo.id ? null : grupo.id));
+                    }}
+                  >
+                    ⋯
+                  </button>
+
+                  {menuGrupoAbiertoId === grupo.id && (
+                    <div
+                      className="classroom-card-menu"
+                      onClick={e => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      {grupo.isAdmin && (
+                        <button
+                          className="classroom-card-menu-item"
+                          onClick={() => {
+                            setGrupoEditando(grupo);
+                            setNuevoNombreGrupoEditar(grupo.nombre || "");
+                            setMenuGrupoAbiertoId(null);
+                          }}
+                        >
+                          Editar nombre
+                        </button>
+                      )}
+                      <button
+                        className="classroom-card-menu-item danger"
+                        onClick={() => manejarAbandonarGrupoHome(grupo)}
+                      >
+                        Abandonar grupo
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>
+                  {iniciales}
+                </div>
+              </div>
+              <div className="classroom-card-body">
+                <div className="classroom-card-title">{grupo.nombre}</div>
+                <div className="label classroom-card-code">Código: {grupo.codigo}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {gruposUsuario.length === 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="label" style={{ marginBottom: 0 }}>
+            Aún no perteneces a ningún grupo. Usa el botón + para crear o unirte.
           </div>
         </div>
-        <div className="topbar-right">
-          <div className="topbar-welcome">
-            <div className="welcome-title">
-              Bienvenido{nombreUsuario ? `, ${nombreUsuario}` : ""}
-            </div>
-            <div className="welcome-subtitle">
-              Ya puedes crear tu grupo o unirte con un código.
-            </div>
-            <button
-              className="btn btn-logout"
-              onClick={() => supabase.auth.signOut()}
-            >
-              Cerrar Sesión
+      )}
+
+      <>
+        <div
+          className={`drawer-overlay ${menuAbierto ? "open" : ""}`}
+          onClick={() => setMenuAbierto(false)}
+        />
+        <aside className={`home-drawer ${menuAbierto ? "open" : ""}`}>
+          <div className="home-drawer-header">
+            <div />
+            <button className="menu-button" onClick={() => setMenuAbierto(false)}>
+              ✕
             </button>
           </div>
-          <button
-            className="avatar-button avatar-big"
-            onClick={() => navigate("/perfil/editar")}
-            aria-label="Ir a perfil"
-          >
-            {avatarUrl ? (
-              <img className="avatar-img" src={avatarUrl} alt="Perfil" />
+
+          <div className="home-drawer-section">
+            <div className="label">Grupos</div>
+            <div className="drawer-list">
+              {gruposUsuario.map(g => (
+                <button
+                  key={g.id}
+                  className="drawer-item drawer-item-color"
+                  style={{
+                    "--drawer-a": obtenerColorGrupo(g.codigo || g.nombre || "").a,
+                    "--drawer-b": obtenerColorGrupo(g.codigo || g.nombre || "").b
+                  }}
+                  onClick={() => {
+                    setMenuAbierto(false);
+                    navigate(`/grupos/${g.codigo}`);
+                  }}
+                >
+                  <span className="drawer-item-name">{g.nombre}</span>
+                  <small className="drawer-item-code">{g.codigo}</small>
+                </button>
+              ))}
+              {gruposUsuario.length === 0 && <div className="label">Sin grupos</div>}
+            </div>
+          </div>
+
+          <div className="home-drawer-section">
+            <div className="label">Mi horario</div>
+            {horarioDrawer.length === 0 ? (
+              <div className="drawer-horario">Sin horario</div>
             ) : (
-              <div className="avatar-fallback">
-                {(nombreUsuario || "U")
-                  .split(" ")
-                  .map(p => p[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
+              <div className="drawer-horario-list">
+                {horarioDrawer.map((b, idx) => (
+                  <div key={`${b.id}-${idx}`} className="drawer-horario-item">
+                    <div className="drawer-horario-top">
+                      <span className="drawer-dia-badge">{b.diaLabel}</span>
+                      <span className="drawer-hora">{b.startTime} - {b.endTime}</span>
+                    </div>
+                    <div className="drawer-clase">{b.nombreClase}</div>
+                  </div>
+                ))}
               </div>
             )}
+          </div>
+        </aside>
+      </>
+
+      {fabAbierto && (
+        <div className="footer-plus-menu">
+          <button
+            className="fab-menu-item"
+            onClick={() => {
+              setAccionAbierta("crear");
+              setFabAbierto(false);
+              setError("");
+            }}
+          >
+            Crear grupo
+          </button>
+          <button
+            className="fab-menu-item"
+            onClick={() => {
+              setAccionAbierta("unirse");
+              setFabAbierto(false);
+              setError("");
+            }}
+          >
+            Unirme por código
           </button>
         </div>
-      </div>
+      )}
 
-      <div style={{ height: 16 }} />
+      <footer className="home-footer">
+        <button
+          className="home-footer-btn"
+          aria-label="Buscar grupos"
+          onClick={() => {
+            setBusquedaAbierta(true);
+            setFabAbierto(false);
+            setMenuGrupoAbiertoId(null);
+          }}
+        >
+          <svg viewBox="0 0 24 24" className="home-footer-icon" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
+            <path d="M20 20L16.8 16.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
 
-      {/* Grupos del usuario */}
-      <div className="card">
-        <strong>📚 Mis grupos</strong>
-        {gruposUsuario.length === 0 ? (
-          <div className="label" style={{ marginBottom: 0 }}>
-            Aun no perteneces a ningun grupo.
-          </div>
-        ) : (
-          <div className="grupos-scroll">
-            {gruposUsuario.map(grupo => (
-              <button
-                key={grupo.id}
-                className="btn"
-                style={{ textAlign: "left" }}
-                onClick={() => navigate(`/grupos/${grupo.codigo}`)}
-              >
-                <div style={{ fontWeight: 800 }}>{grupo.nombre}</div>
-                <div className="label" style={{ marginBottom: 0 }}>
-                  Codigo: {grupo.codigo}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+        <button
+          className="home-footer-plus"
+          aria-label="Opciones de grupo"
+          onClick={() => {
+            setFabAbierto(v => !v);
+            setAccionAbierta("");
+            setMenuGrupoAbiertoId(null);
+          }}
+        >
+          +
+        </button>
 
-      <div style={{ height: 16 }} />
-
-      {/* Horario del usuario */}
-      <div className="card">
-        <strong>🗓️ Mi horario</strong>
-        <div className="label" style={{ marginTop: 8 }}>
-          {resumenHorario}
-        </div>
-        {horario.length > 0 && (
-          <div className="schedule-list">
-            {horario
-              .slice()
-              .sort((a, b) =>
-                a.dayOfWeek === b.dayOfWeek
-                  ? a.startTime.localeCompare(b.startTime)
-                  : a.dayOfWeek - b.dayOfWeek
-              )
-              .map(b => (
-                <div key={b.id} className="schedule-item">
-                  <div>
-                    <strong>
-                      {DIAS.find(d => d.value === b.dayOfWeek)?.label}
-                    </strong>{" "}
-                    {b.startTime} - {b.endTime}
-                    {b.type ? ` · ${b.type}` : ""}
-                  </div>
-                </div>
-              ))}
-          </div>
-        )}
-        {horario.length === 0 && (
-          <div className="label" style={{ marginTop: 8 }}>
-            Aún no tienes bloques guardados.
-          </div>
-        )}
-      </div>
-
-      <div style={{ height: 16 }} />
-
-      {/* Bloques principales: crear grupo / unirse por código */}
-      <div className="grid2">
-        <div className="card">
-          <strong>✨ Crear grupo</strong>
-          <label className="label">Nombre del grupo</label>
-          <input
-            className="input"
-            value={nombreGrupo}
-            onChange={e => setNombreGrupo(e.target.value)}
-            placeholder="Ej: Cálculo II - Parcial 1"
-          />
-          <button className="btn btnPrimary" onClick={manejarCrearGrupo}>
-            {/* Botón para crear grupo y generar código */}
-            Crear y generar código
-          </button>
-        </div>
-
-        <div className="card">
-          <strong>🔑 Unirse por código</strong>
-          <label className="label">Código del grupo</label>
-          <input
-            className="input"
-            value={codigoIngreso}
-            onChange={e => manejarCambioCodigo(e.target.value)}
-            placeholder="Ej: A1B2C3"
-            style={{ textTransform: "uppercase", fontWeight: 800 }}
-          />
-
-          {vistaPrevia && (
-            <div className="preview">
-              {/* Vista previa del grupo encontrado por código */}
-              <div><strong>🔍 Vista previa</strong></div>
-              <div>{vistaPrevia.nombre}</div>
-              <div>
-                Miembros: {vistaPrevia.miembros.map(m => m.nombre).join(", ")}
-              </div>
+        <button
+          className="avatar-button home-footer-avatar"
+          onClick={() => navigate("/perfil/editar")}
+          aria-label="Ir a perfil"
+        >
+          {avatarUrl ? (
+            <img className="avatar-img" src={avatarUrl} alt="Perfil" />
+          ) : (
+            <div className="avatar-fallback">
+              {(nombreUsuario || "U")
+                .split(" ")
+                .map(p => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
             </div>
           )}
+        </button>
+      </footer>
 
-          <button className="btn" onClick={manejarUnirse}>
-            {/* Botón para unirse al grupo usando el código */}
-            Unirme al grupo
-          </button>
+      {accionAbierta && (
+        <div className="modal-overlay" onClick={() => setAccionAbierta("")}>
+          <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{accionAbierta === "crear" ? "Crear grupo" : "Unirme al grupo"}</h3>
+              <button className="modal-close" onClick={() => setAccionAbierta("")}>✕</button>
+            </div>
+            <div className="modal-body">
+              {accionAbierta === "crear" && (
+                <>
+                  <label className="label">Nombre del grupo</label>
+                  <input
+                    className="input"
+                    value={nombreGrupo}
+                    onChange={e => setNombreGrupo(e.target.value)}
+                    placeholder="Ej: Cálculo II - Parcial 1"
+                  />
+                  <button className="btn btnPrimary" onClick={manejarCrearGrupo}>
+                    Crear y generar código
+                  </button>
+                </>
+              )}
+
+              {accionAbierta === "unirse" && (
+                <>
+                  <label className="label">Código del grupo</label>
+                  <input
+                    className="input"
+                    value={codigoIngreso}
+                    onChange={e => manejarCambioCodigo(e.target.value)}
+                    placeholder="Ej: A1B2C3"
+                    style={{ textTransform: "uppercase", fontWeight: 700 }}
+                  />
+
+                  {vistaPrevia && (
+                    <div className="preview">
+                      <div style={{ fontWeight: 700 }}>{vistaPrevia.nombre}</div>
+                      <div className="label" style={{ marginBottom: 0 }}>
+                        Miembros: {vistaPrevia.miembros.map(m => m.nombre).join(", ")}
+                      </div>
+                    </div>
+                  )}
+
+                  <button className="btn btnPrimary" onClick={manejarUnirse}>
+                    Unirme al grupo
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Muestra errores de validación o API */}
+      {grupoEditando && (
+        <div className="modal-overlay" onClick={() => setGrupoEditando(null)}>
+          <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Editar nombre del grupo</h3>
+              <button className="modal-close" onClick={() => setGrupoEditando(null)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <label className="label">Nombre del grupo</label>
+              <input
+                className="input"
+                value={nuevoNombreGrupoEditar}
+                onChange={e => setNuevoNombreGrupoEditar(e.target.value)}
+                placeholder="Nombre del grupo"
+              />
+              <button className="btn btnPrimary" onClick={manejarGuardarNombreGrupoHome}>
+                Guardar nombre
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {busquedaAbierta && (
+        <div className="modal-overlay" onClick={() => setBusquedaAbierta(false)}>
+          <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Buscar grupo</h3>
+              <button className="modal-close" onClick={() => setBusquedaAbierta(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="modal-body">
+              <input
+                className="input"
+                value={busquedaTexto}
+                onChange={e => setBusquedaTexto(e.target.value)}
+                placeholder="Buscar por nombre o código"
+              />
+              <div className="drawer-list" style={{ marginTop: 12 }}>
+                {gruposFiltrados.map(g => (
+                  <button
+                    key={g.id}
+                    className="drawer-item"
+                    onClick={() => {
+                      setBusquedaAbierta(false);
+                      setBusquedaTexto("");
+                      navigate(`/grupos/${g.codigo}`);
+                    }}
+                  >
+                    <span>{g.nombre}</span>
+                    <small>{g.codigo}</small>
+                  </button>
+                ))}
+                {gruposFiltrados.length === 0 && <div className="label">Sin resultados</div>}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && <div className="alert">{error}</div>}
     </div>
-    
   );
 }

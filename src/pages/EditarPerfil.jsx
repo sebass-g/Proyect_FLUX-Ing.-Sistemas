@@ -459,9 +459,32 @@ export default function EditarPerfil() {
             <div className="brandSubtitle">Editar perfil</div>
           </div>
         </div>
-        <button className="btn" style={{ width: "auto" }} onClick={() => navigate(-1)}>
-          Volver
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn arrow-back" style={{ marginTop: 0 }} onClick={() => navigate(-1)} aria-label="Atrás">
+            <svg
+              className="arrow-back-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M15 6L9 12L15 18"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            className="btn"
+            style={{ width: "auto", marginTop: 0 }}
+            onClick={() => supabase.auth.signOut()}
+          >
+            Cerrar sesión
+          </button>
+        </div>
       </div>
 
       <div className="perfil-grid">

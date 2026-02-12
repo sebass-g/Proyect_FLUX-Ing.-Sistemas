@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   actualizarNombreGrupo,
@@ -9,24 +9,31 @@ import {
   obtenerVistaPreviaPorCodigo
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
-import '../estilos/flux.css';
+import { obtenerColorGrupo } from "../utils/groupColors";
+import "../estilos/flux.css";
 
 export default function GrupoDetalle() {
   const { codigo } = useParams();
   const navigate = useNavigate();
+
   const [grupo, setGrupo] = useState(null);
-  const [archivosSeleccionados, setArchivosSeleccionados] = useState([]);
-  const [subiendo, setSubiendo] = useState(false);
-  const [mensajeSubida, setMensajeSubida] = useState('');
-  const [archivosSubidos, setArchivosSubidos] = useState([]);
-  const [mostrarModalArchivos, setMostrarModalArchivos] = useState(false);
   const [cargandoGrupo, setCargandoGrupo] = useState(true);
   const [userId, setUserId] = useState(null);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [esAdmin, setEsAdmin] = useState(false);
+
+  const [tabActiva, setTabActiva] = useState("stream");
   const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
+  const [nuevoAnuncio, setNuevoAnuncio] = useState("");
+  const [error, setError] = useState("");
+
+  const [archivosSeleccionados, setArchivosSeleccionados] = useState([]);
+  const [archivosSubidos, setArchivosSubidos] = useState([]);
+  const [subiendo, setSubiendo] = useState(false);
+  const [mensajeSubida, setMensajeSubida] = useState("");
   const inputRef = useRef(null);
+
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const [miembroActivo, setMiembroActivo] = useState(null);
   const [perfilMiembro, setPerfilMiembro] = useState(null);
@@ -46,24 +53,41 @@ export default function GrupoDetalle() {
     { value: 0, label: "Dom" }
   ];
 
-  useEffect(() => {
-    (async () => {
-      // Si no hay código en URL, no hacemos petición
-      if (!codigo) {
-        setGrupo(null);
-        setCargandoGrupo(false);
-        return;
-      }
-      setCargandoGrupo(true);
-      // Cargar datos del grupo para renderizar miembros/actividad
-      const g = await obtenerVistaPreviaPorCodigo(codigo);
-      setGrupo(g);
-      setNuevoNombreGrupo(g?.nombre || "");
-      const miembro = g?.miembros?.find(m => m.user_id === userId);
-      setEsAdmin(Boolean(miembro?.is_admin));
-      setCargandoGrupo(false);
-    })();
-  }, [codigo, userId]);
+  const puedePublicarAnuncio = useMemo(
+    () => Boolean(userId && grupo?.creadorId && userId === grupo.creadorId),
+    [userId, grupo]
+  );
+
+  const anuncios = useMemo(() => {
+    const items = grupo?.actividad || [];
+    return items
+      .filter(a => `${a.mensaje || ""}`.startsWith("ANUNCIO::"))
+      .map(a => ({
+        ...a,
+        texto: `${a.mensaje || ""}`.replace("ANUNCIO::", "")
+      }));
+  }, [grupo]);
+
+  async function recargarGrupo() {
+    if (!codigo) return;
+    const g = await obtenerVistaPreviaPorCodigo(codigo);
+    setGrupo(g);
+    setNuevoNombreGrupo(g?.nombre || "");
+    const miembro = g?.miembros?.find(m => m.user_id === userId);
+    setEsAdmin(Boolean(miembro?.is_admin));
+  }
+
+  async function listarArchivos() {
+    try {
+      const { data, error: listError } = await supabase.storage
+        .from("Flux_repositorioGrupos")
+        .list(`archivos/${codigo}`);
+      if (listError) throw listError;
+      setArchivosSubidos(data || []);
+    } catch (e) {
+      setMensajeSubida(`Error al listar archivos: ${e.message}`);
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -71,49 +95,57 @@ export default function GrupoDetalle() {
         data: { session },
         error: sessionError
       } = await supabase.auth.getSession();
-      if (sessionError) return;
+      if (sessionError) {
+        setError("No se pudo leer la sesión.");
+        return;
+      }
       setUserId(session?.user?.id || null);
       setAvatarUrl(session?.user?.user_metadata?.avatar_url?.trim() || "");
       setDisplayName(session?.user?.user_metadata?.display_name?.trim() || "");
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      if (!codigo) {
+        setGrupo(null);
+        setCargandoGrupo(false);
+        return;
+      }
+      setCargandoGrupo(true);
+      await recargarGrupo();
+      await listarArchivos();
+      setCargandoGrupo(false);
+    })();
+  }, [codigo, userId]);
 
-  // Funciones para manejar archivos
-  const manejarArchivos = (files) => {
+  const manejarArchivos = files => {
     const archivosValidos = Array.from(files).filter(file => {
-      const tipos = ['application/pdf', 'image/png', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-      return tipos.includes(file.type) && file.size <= 20 * 1024 * 1024; // 20MB
+      const tipos = [
+        "application/pdf",
+        "image/png",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ];
+      return tipos.includes(file.type) && file.size <= 20 * 1024 * 1024;
     });
     setArchivosSeleccionados(archivosValidos);
   };
 
-  const manejarDrop = (e) => {
+  const manejarDrop = e => {
     e.preventDefault();
     manejarArchivos(e.dataTransfer.files);
   };
 
-  const manejarDragOver = (e) => {
-    e.preventDefault();
-  };
+  const manejarDragOver = e => e.preventDefault();
 
-  const manejarClick = () => {
-    inputRef.current.click();
-  };
-
-  const manejarInputChange = (e) => {
-    manejarArchivos(e.target.files);
-  };
-
-  // Función para subir archivos a Supabase Storage
-  const subirArchivos = async () => {
-    if (archivosSeleccionados.length === 0) {
-      setMensajeSubida('Selecciona archivos primero');
+  async function subirArchivos() {
+    if (!archivosSeleccionados.length) {
+      setMensajeSubida("Selecciona archivos primero");
       return;
     }
 
     setSubiendo(true);
-    setMensajeSubida('');
+    setMensajeSubida("");
 
     try {
       const {
@@ -121,122 +153,130 @@ export default function GrupoDetalle() {
         error: sessionError
       } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
-      const userId = session?.user?.id || null;
-
-      const urls = [];
+      const uploaderId = session?.user?.id || null;
 
       for (const archivo of archivosSeleccionados) {
-        // Crear un path único para evitar conflictos, sanitizando el nombre del archivo
-        const safeName = archivo.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const safeName = archivo.name.replace(/[^a-zA-Z0-9.-]/g, "_");
         const path = `archivos/${codigo}/${Date.now()}-${safeName}`;
 
-        // Subir archivo a Supabase Storage (bucket 'Flux_repositorioGrupos')
-        const { data, error } = await supabase.storage
-          .from('Flux_repositorioGrupos')
+        const { error: uploadError } = await supabase.storage
+          .from("Flux_repositorioGrupos")
           .upload(path, archivo);
-
-        if (error) throw error;
-
-        // Obtener URL pública del archivo subido
-        const { data: urlData } = supabase.storage
-          .from('Flux_repositorioGrupos')
-          .getPublicUrl(path);
-
-        urls.push(urlData.publicUrl);
+        if (uploadError) throw uploadError;
 
         if (grupo?.id) {
-          const { error: metaError } = await supabase
-            .from('grupo_archivos')
-            .insert({
-              grupo_id: grupo.id,
-              path,
-              nombre: archivo.name,
-              mime_type: archivo.type,
-              size_bytes: archivo.size,
-              uploader_id: userId
-            });
+          const { error: metaError } = await supabase.from("grupo_archivos").insert({
+            grupo_id: grupo.id,
+            path,
+            nombre: archivo.name,
+            mime_type: archivo.type,
+            size_bytes: archivo.size,
+            uploader_id: uploaderId
+          });
           if (metaError) throw metaError;
         }
       }
 
-      setMensajeSubida(`✅ ${archivosSeleccionados.length} archivo(s) subido(s) exitosamente!`);
-      setArchivosSeleccionados([]); // Limpiar selección
-      console.log('URLs de archivos:', urls); // Para debugging
-
-    } catch (error) {
-      setMensajeSubida(`❌ Error al subir: ${error.message}`);
+      setMensajeSubida(`${archivosSeleccionados.length} archivo(s) subido(s) exitosamente.`);
+      setArchivosSeleccionados([]);
+      await listarArchivos();
+    } catch (e) {
+      setMensajeSubida(`Error al subir: ${e.message}`);
     } finally {
       setSubiendo(false);
     }
-  };
+  }
 
-  // Función para listar archivos subidos
-  const listarArchivos = async () => {
-    try {
-      const { data, error } = await supabase.storage.from('Flux_repositorioGrupos').list(`archivos/${codigo}`);
-      if (error) throw error;
-      setArchivosSubidos(data || []);
-      setMostrarModalArchivos(true);
-    } catch (error) {
-      setMensajeSubida(`❌ Error al listar archivos: ${error.message}`);
+  async function manejarEliminarArchivo(fullPath) {
+    if (!grupo) return;
+    const { error: removeError } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .remove([fullPath]);
+    if (removeError) {
+      setMensajeSubida(`Error al eliminar archivo: ${removeError.message}`);
+      return;
     }
-  };
 
-  const manejarGuardarNombre = async () => {
+    await eliminarArchivoGrupo({ grupoId: grupo.id, path: fullPath });
+    await listarArchivos();
+  }
+
+  async function publicarAnuncio() {
+    setError("");
+    if (!grupo?.id) return;
+    if (!puedePublicarAnuncio) {
+      setError("Solo el creador del grupo puede publicar anuncios.");
+      return;
+    }
+    if (!nuevoAnuncio.trim()) {
+      setError("Escribe un anuncio antes de publicar.");
+      return;
+    }
+
+    const { error: insertError } = await supabase.from("grupo_actividad").insert({
+      grupo_id: grupo.id,
+      actor_id: userId,
+      mensaje: `ANUNCIO::${nuevoAnuncio.trim()}`
+    });
+
+    if (insertError) {
+      setError(insertError.message);
+      return;
+    }
+
+    setNuevoAnuncio("");
+    await recargarGrupo();
+  }
+
+  async function manejarGuardarNombre() {
     if (!grupo) return;
     if (!nuevoNombreGrupo.trim()) return;
     await actualizarNombreGrupo({ grupoId: grupo.id, nombre: nuevoNombreGrupo });
-    setGrupo({ ...grupo, nombre: nuevoNombreGrupo.trim() });
-  };
+    setGrupo(prev => ({ ...prev, nombre: nuevoNombreGrupo.trim() }));
+  }
 
-  const manejarExpulsar = async (miembroId) => {
+  async function manejarExpulsar(miembroId) {
     if (!grupo) return;
     await expulsarMiembro({ grupoId: grupo.id, miembroId });
-    const g = await obtenerVistaPreviaPorCodigo(grupo.codigo);
-    setGrupo(g);
-  };
+    await recargarGrupo();
+  }
 
-  const manejarEliminarGrupo = async () => {
+  async function manejarEliminarGrupo() {
     if (!grupo) return;
-    const ok = window.confirm("Eliminar este grupo? Esta accion no se puede deshacer.");
+    const ok = window.confirm("Eliminar este grupo? Esta acción no se puede deshacer.");
     if (!ok) return;
     await eliminarGrupo({ grupoId: grupo.id });
     navigate("/grupos");
-  };
+  }
 
-  const manejarAbandonarGrupo = async () => {
+  async function manejarAbandonarGrupo() {
     if (!grupo) return;
-    const ok = window.confirm("Abandonar este grupo? Si eres el último miembro, el grupo se eliminará.");
+    const ok = window.confirm("Abandonar este grupo? Si eres el último miembro, se eliminará.");
     if (!ok) return;
     await abandonarGrupo({ grupoId: grupo.id });
     navigate("/grupos");
-  };
+  }
 
-  const manejarEliminarArchivo = async (fullPath) => {
-    if (!grupo) return;
-    const { error } = await supabase.storage.from('Flux_repositorioGrupos').remove([fullPath]);
-    if (error) {
-      setMensajeSubida(`âŒ Error al eliminar archivo: ${error.message}`);
-      return;
-    }
-    await eliminarArchivoGrupo({ grupoId: grupo.id, path: fullPath });
-    await listarArchivos();
-  };
-
-  const buscarAvatarPorCarpeta = async (miembroId) => {
+  const buscarAvatarPorCarpeta = async miembroId => {
     const { data: files } = await supabase.storage
       .from("Flux_repositorioGrupos")
-      .list(`avatars/${miembroId}`, { limit: 1, offset: 0, sortBy: { column: "created_at", order: "desc" } });
+      .list(`avatars/${miembroId}`, {
+        limit: 1,
+        offset: 0,
+        sortBy: { column: "created_at", order: "desc" }
+      });
 
     const file = (files || [])[0];
     if (!file) return "";
+
     const { data: urlData } = supabase.storage
       .from("Flux_repositorioGrupos")
       .getPublicUrl(`avatars/${miembroId}/${file.name}`);
+
     return urlData?.publicUrl || "";
   };
 
-  const cargarPerfilMiembro = async (miembro) => {
+  const cargarPerfilMiembro = async miembro => {
     if (!miembro?.user_id) return;
     setMiembroActivo(miembro);
     setPerfilMiembro(null);
@@ -248,25 +288,15 @@ export default function GrupoDetalle() {
     setMostrarPerfil(true);
 
     let perfil = null;
-    try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("nombre, apellido, career")
-        .eq("id", miembro.user_id)
-        .maybeSingle();
-      if (error) throw error;
-      perfil = data;
-    } catch (_e) {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("nombre, apellido, career")
-        .eq("id", miembro.user_id)
-        .maybeSingle();
-      if (error) {
-        setErrorPerfil("No se pudo cargar el perfil.");
-      } else {
-        perfil = data;
-      }
+    const { data: perfilData, error: perfilError } = await supabase
+      .from("profiles")
+      .select("nombre, apellido, career")
+      .eq("id", miembro.user_id)
+      .maybeSingle();
+    if (perfilError) {
+      setErrorPerfil("No se pudo cargar el perfil.");
+    } else {
+      perfil = perfilData;
     }
 
     const { data: bloquesData, error: bloquesError } = await supabase
@@ -296,46 +326,78 @@ export default function GrupoDetalle() {
     setCargandoPerfil(false);
   };
 
-  // Estado de carga inicial del grupo
   if (cargandoGrupo) {
     return (
       <div className="container">
-        <div className="card">
-          <strong>Cargando grupo...</strong>
-          <p>Esto puede tomar unos segundos.</p>
-        </div>
+        <div className="card">Cargando grupo...</div>
       </div>
     );
   }
 
-  // Estado cuando el código no existe o no se encontró el grupo
   if (!grupo) {
     return (
       <div className="container">
         <div className="card">
           <strong>Grupo no encontrado</strong>
           <p>Verifique el código e intente nuevamente.</p>
-          <button className="btn" onClick={() => navigate("/grupos")}>
-            Volver
+          <button className="btn arrow-back" onClick={() => navigate("/grupos")} aria-label="Atrás">
+            <svg
+              className="arrow-back-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M15 6L9 12L15 18"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </button>
         </div>
       </div>
     );
   }
 
+  const colorGrupo = obtenerColorGrupo(grupo.codigo || grupo.nombre || "");
   return (
     <div className="container">
-      {/* Encabezado con acciones de navegación */}
-      <div className="topbar">
-        <div className="brand">
-          <div className="logoDot" />
-          <div>
-            <div className="brandTitle">FLUX</div>
-            <div className="brandSubtitle">Detalle del grupo</div>
+      <div
+        className="group-banner"
+        style={{ "--banner-a": colorGrupo.a, "--banner-b": colorGrupo.b }}
+      >
+        <div className="group-banner-content group-banner-single">
+          <button
+            className="btn arrow-back group-back-btn"
+            onClick={() => navigate("/grupos")}
+            aria-label="Atrás"
+          >
+            <svg
+              className="arrow-back-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path
+                d="M15 6L9 12L15 18"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+
+          <div className="group-banner-main">
+            <div className="group-banner-title">{grupo.nombre}</div>
+            <div className="group-banner-subtitle">Código: {grupo.codigo}</div>
           </div>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="avatar-button" onClick={() => navigate("/perfil/editar")}>
+
+          <button className="avatar-button home-avatar-lg" onClick={() => navigate("/perfil/editar")}>
             {avatarUrl ? (
               <img className="avatar-img" src={avatarUrl} alt="Perfil" />
             ) : (
@@ -349,36 +411,176 @@ export default function GrupoDetalle() {
               </div>
             )}
           </button>
-          <button className="btn" style={{ width: "auto" }} onClick={() => navigate("/grupos")}>
-            {/* Botón para volver a la lista de grupos */}
-            Volver
-          </button>
-          <button
-            className="btn"
-            style={{ width: "auto", background: "#ffffff10", fontSize: "12px" }}
-            onClick={() => supabase.auth.signOut()}
-          >
-            {/* Botón para cerrar sesión */}
-            Cerrar Sesión
-          </button>
         </div>
       </div>
 
+      <div className="group-tabs">
+        <button className={`group-tab ${tabActiva === "stream" ? "active" : ""}`} onClick={() => setTabActiva("stream")}>Stream</button>
+        <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
+        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>People</button>
+      </div>
+
+      {tabActiva === "stream" && (
+        <div className="group-tab-content">
+          {puedePublicarAnuncio && (
+            <div className="card">
+              <strong>Nuevo anuncio</strong>
+              <textarea
+                className="input"
+                rows={4}
+                value={nuevoAnuncio}
+                onChange={e => setNuevoAnuncio(e.target.value)}
+                placeholder="Escribe un anuncio para los integrantes..."
+              />
+              <button className="btn btnPrimary" onClick={publicarAnuncio}>Publicar anuncio</button>
+            </div>
+          )}
+
+          <div className="group-feed">
+            {anuncios.map((a, i) => {
+              const autor = grupo.miembros.find(m => m.user_id === a.actor_id)?.nombre || "Creador";
+              return (
+                <article key={`${a.fecha}-${i}`} className="feed-card">
+                  <div className="feed-card-header">
+                    <div className="feed-avatar">{autor.slice(0, 1).toUpperCase()}</div>
+                    <div>
+                      <div className="feed-author">{autor}</div>
+                      <div className="feed-date">{new Date(a.fecha).toLocaleString()}</div>
+                    </div>
+                  </div>
+                  <div className="feed-text">{a.texto}</div>
+                </article>
+              );
+            })}
+            {anuncios.length === 0 && (
+              <div className="card">
+                <div className="label" style={{ marginBottom: 0 }}>
+                  Aún no hay anuncios del creador.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tabActiva === "archivos" && (
+        <div className="group-tab-content">
+          <div className="card repo-card" style={{ maxWidth: "none" }}>
+            <strong className="repo-title">Subir archivos</strong>
+            <p className="label repo-subtitle">PDF, DOCX, PNG (Máx. 20MB)</p>
+
+            <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
+              <div className="drop-content">
+                <p className="repo-hint">
+                  {archivosSeleccionados.length > 0
+                    ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
+                    : "Arrastra archivos aquí o haz click para seleccionar"}
+                </p>
+                <small className="label">PDF, DOCX, PNG hasta 20MB</small>
+              </div>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              accept=".pdf,.png,.docx"
+              style={{ display: "none" }}
+              onChange={e => manejarArchivos(e.target.files)}
+            />
+
+            {archivosSeleccionados.length > 0 && (
+              <ul className="repo-files">
+                {archivosSeleccionados.map((file, idx) => (
+                  <li key={idx} className="label repo-file">
+                    {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="repo-actions">
+              <button className="btn btnPrimary" onClick={subirArchivos} disabled={subiendo}>
+                {subiendo ? "Subiendo..." : "Subir al repositorio"}
+              </button>
+              <button className="btn" onClick={listarArchivos}>Refrescar archivos</button>
+            </div>
+
+            {mensajeSubida && <p className="repo-message">{mensajeSubida}</p>}
+          </div>
+
+          <div className="archivos-grid">
+            {archivosSubidos.map((file, idx) => {
+              const fullPath = `archivos/${codigo}/${file.name}`;
+              const { data } = supabase.storage.from("Flux_repositorioGrupos").getPublicUrl(fullPath);
+              const extension = file.name.split(".").pop().toLowerCase();
+              const icono = extension === "pdf" ? "📄" : extension === "docx" ? "📝" : extension === "png" ? "🖼️" : "📎";
+
+              return (
+                <div key={idx} className="archivo-card">
+                  <a href={data.publicUrl} target="_blank" rel="noopener noreferrer" className="archivo-link">
+                    <div className="archivo-icon">{icono}</div>
+                    <div className="archivo-info">
+                      <div className="archivo-nombre">{file.name}</div>
+                      <div className="archivo-meta">{new Date(file.created_at).toLocaleDateString()}</div>
+                    </div>
+                  </a>
+                  {esAdmin && (
+                    <button className="btn" style={{ marginTop: 8 }} onClick={() => manejarEliminarArchivo(fullPath)}>
+                      Eliminar archivo
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {!archivosSubidos.length && <p className="no-archivos">No hay archivos subidos aún.</p>}
+          </div>
+        </div>
+      )}
+
+      {tabActiva === "people" && (
+        <div className="group-tab-content">
+          <div className="card">
+            <strong>Integrantes</strong>
+            <ul className="miembros-scroll" style={{ maxHeight: "none" }}>
+              {grupo.miembros.map(m => (
+                <li key={m.id} className="member-row">
+                  <button className="member-item" onClick={() => cargarPerfilMiembro(m)}>
+                    <span className="member-item-name">
+                      {m.nombre}
+                      {m.is_admin ? " (admin)" : ""}
+                    </span>
+                    <span className="member-item-hint">Ver perfil</span>
+                  </button>
+
+                  {esAdmin && m.user_id !== userId && (
+                    <button
+                      className="btn member-kick"
+                      onClick={e => {
+                        e.stopPropagation();
+                        manejarExpulsar(m.id);
+                      }}
+                    >
+                      Expulsar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {mostrarPerfil && (
         <div className="modal-overlay" onClick={() => setMostrarPerfil(false)}>
-          <div className="modal-content member-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content member-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Perfil del miembro</h3>
-              <button className="modal-close" onClick={() => setMostrarPerfil(false)}>
-                ✕
-              </button>
+              <h3>Perfil del integrante</h3>
+              <button className="modal-close" onClick={() => setMostrarPerfil(false)}>✕</button>
             </div>
             <div className="modal-body">
-              {cargandoPerfil && (
-                <div className="card" style={{ margin: 0 }}>
-                  <strong>Cargando perfil...</strong>
-                </div>
-              )}
+              {cargandoPerfil && <div className="card" style={{ margin: 0 }}><strong>Cargando perfil...</strong></div>}
+
               {!cargandoPerfil && (
                 <div className="member-card">
                   <div className="member-info">
@@ -388,20 +590,15 @@ export default function GrupoDetalle() {
                     </div>
                     <div className="member-field">
                       <span className="label">Nombre</span>
-                      <div>
-                        {(perfilMiembro?.nombre || "-")} {(perfilMiembro?.apellido || "")}
-                      </div>
+                      <div>{(perfilMiembro?.nombre || "-")} {(perfilMiembro?.apellido || "")}</div>
                     </div>
                     <div className="member-field">
                       <span className="label">Carrera</span>
                       <div>{perfilMiembro?.career || "No especificada"}</div>
                     </div>
-                    {errorPerfil && (
-                      <div className="alert" style={{ marginTop: 8 }}>
-                        {errorPerfil}
-                      </div>
-                    )}
+                    {errorPerfil && <div className="alert" style={{ marginTop: 8 }}>{errorPerfil}</div>}
                   </div>
+
                   <div className="member-avatar">
                     {avatarMiembroUrl ? (
                       <img
@@ -436,9 +633,7 @@ export default function GrupoDetalle() {
                 <div className="member-schedule">
                   <strong>Horario</strong>
                   {horarioMiembro.length === 0 ? (
-                    <div className="label" style={{ marginTop: 8 }}>
-                      Este miembro aún no tiene bloques guardados.
-                    </div>
+                    <div className="label" style={{ marginTop: 8 }}>Este miembro aún no tiene bloques guardados.</div>
                   ) : (
                     <div className="schedule-list">
                       {horarioMiembro
@@ -451,10 +646,7 @@ export default function GrupoDetalle() {
                         .map(b => (
                           <div key={b.id} className="schedule-item">
                             <div>
-                              <strong>
-                                {DIAS.find(d => d.value === b.dayOfWeek)?.label}
-                              </strong>{" "}
-                              {b.startTime} - {b.endTime}
+                              <strong>{DIAS.find(d => d.value === b.dayOfWeek)?.label}</strong> {b.startTime} - {b.endTime}
                               {b.type ? ` · ${b.type}` : ""}
                             </div>
                           </div>
@@ -468,215 +660,7 @@ export default function GrupoDetalle() {
         </div>
       )}
 
-      {/* Resumen del grupo (Se mantiene tu diseño original) */}
-      <div className="card">
-        <h1>{grupo.nombre}</h1>
-        <p>
-          Código del grupo: <strong>{grupo.codigo}</strong>
-        </p>
-        {esAdmin && (
-          <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <label className="label">Editar nombre del grupo</label>
-            <input
-              className="input"
-              value={nuevoNombreGrupo}
-              onChange={(e) => setNuevoNombreGrupo(e.target.value)}
-            />
-            <button className="btn" onClick={manejarGuardarNombre}>
-              Guardar nombre
-            </button>
-            <button className="btn" onClick={manejarEliminarGrupo}>
-              Eliminar grupo
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div style={{ height: 16 }} />
-
-      {/* Listas paralelas: miembros y actividad */}
-      <div className="grid2">
-        <div className="card">
-          <strong>Miembros</strong>
-          {/* Lista de miembros con scroll */}
-          <ul className="miembros-scroll">
-            {grupo.miembros.map(m => (
-              <li key={m.id} className="member-row">
-                <button
-                  className="member-item"
-                  onClick={() => cargarPerfilMiembro(m)}
-                >
-                  <span className="member-item-name">
-                    {m.nombre}{m.is_admin ? " (admin)" : ""}
-                  </span>
-                  <span className="member-item-hint">Ver perfil</span>
-                </button>
-                {esAdmin && m.user_id !== userId && (
-                  <button
-                    className="btn member-kick"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      manejarExpulsar(m.id);
-                    }}
-                  >
-                    Expulsar
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="card">
-          <strong>Actividad</strong>
-          {/* Lista de actividad con scroll */}
-          <div className="actividad-scroll">
-            {grupo.actividad.map((a, i) => (
-              <div key={i} className="feedItem">
-                <div>{a.mensaje}</div>
-                <small>{new Date(a.fecha).toLocaleString()}</small>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ height: 24 }} />
-
-      {/* === BANNER  PARA SUBIR ARCHIVOS === */}
-      <div className="card repo-card">
-        <strong className="repo-title">Subir Archivos al Repositorio</strong>
-        
-        {/* Etiqueta informativa */}
-        <p className="label repo-subtitle">
-          Formatos: PDF, DOCX, PNG (Máx. 20MB) • Arrastra y suelta o haz click
-        </p>
-        
-        {/* Área de drop */}
-        <div 
-          className="drop-area"
-          onClick={manejarClick}
-          onDrop={manejarDrop}
-          onDragOver={manejarDragOver}
-        >
-          <div className="drop-content">
-            <p className="repo-hint">
-              {archivosSeleccionados.length > 0 
-                ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
-                : 'Arrastra archivos aquí o haz click para seleccionar'
-              }
-            </p>
-            <small className="label">PDF, DOCX, PNG hasta 20MB</small>
-          </div>
-        </div>
-
-        {/* Input oculto */}
-        <input 
-          ref={inputRef}
-          type="file" 
-          multiple 
-          accept=".pdf, .png, .docx"
-          style={{ display: 'none' }}
-          onChange={manejarInputChange}
-        />
-        
-        {/* Lista de archivos seleccionados */}
-        {archivosSeleccionados.length > 0 && (
-          <div className="repo-list">
-            <strong>Archivos seleccionados:</strong>
-            <ul className="repo-files">
-              {archivosSeleccionados.map((file, index) => (
-                <li key={index} className="label repo-file">
-                  {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        
-        {/* El botón para subir */}
-        <div className="repo-actions">
-          <button className="btn btnPrimary" onClick={subirArchivos} disabled={subiendo}>
-            {subiendo ? '⏳ Subiendo...' : 'Subir al repositorio'}
-          </button>
-          {/* Botón para ver archivos subidos */}
-          <button className="btn" onClick={listarArchivos}>
-            Ver archivos subidos
-          </button>
-        </div>
-
-        {/* Modal para archivos subidos */}
-        {mostrarModalArchivos && (
-          <div className="modal-overlay" onClick={() => setMostrarModalArchivos(false)}>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <div className="modal-header">
-                <h3>📂 Archivos en el Repositorio</h3>
-                <button 
-                  className="modal-close" 
-                  onClick={() => setMostrarModalArchivos(false)}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="modal-body">
-                {archivosSubidos.length > 0 ? (
-                  <div className="archivos-grid">
-                    {archivosSubidos.map((file, index) => {
-                      const fullPath = `archivos/${codigo}/${file.name}`;
-                      const { data } = supabase.storage.from('Flux_repositorioGrupos').getPublicUrl(fullPath);
-                      const extension = file.name.split('.').pop().toLowerCase();
-                      const icono = extension === 'pdf' ? '📄' : extension === 'docx' ? '📝' : extension === 'png' ? '🖼️' : '📎';
-                      
-                      return (
-                        <div key={index} className="archivo-card">
-                          <a 
-                            href={data.publicUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="archivo-link"
-                          >
-                            <div className="archivo-icon">{icono}</div>
-                            <div className="archivo-info">
-                              <div className="archivo-nombre">{file.name}</div>
-                              <div className="archivo-meta">
-                                {new Date(file.created_at).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </a>
-                          {esAdmin && (
-                            <button
-                              className="btn"
-                              style={{ marginTop: 8 }}
-                              onClick={() => manejarEliminarArchivo(fullPath)}
-                            >
-                              Eliminar archivo
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="no-archivos">📂 No hay archivos subidos aún.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Mensaje de subida */}
-        {mensajeSubida && (
-          <p className={`repo-message ${mensajeSubida.startsWith('✅') ? 'ok' : 'error'}`}>
-            {mensajeSubida}
-          </p>
-        )}
-      </div>
-
-      <div style={{ height: 16 }} />
-
-      <button className="btn" onClick={manejarAbandonarGrupo}>
-        Abandonar grupo
-      </button>
+      {error && <div className="alert">{error}</div>}
     </div>
   );
 }

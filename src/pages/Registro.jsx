@@ -3,8 +3,7 @@ import { supabase } from '../config/supabaseClient'
 import '../estilos/flux.css' 
 
 function Registro() {
-  // Estados principales del formulario y su UI
-  const [esLogin, setEsLogin] = useState(true) // true = Iniciar Sesión, false = Crear Cuenta
+  const [esLogin, setEsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
@@ -16,9 +15,7 @@ function Registro() {
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState({ texto: '', tipo: '' })
 
-  // Maneja login/registro con validaciones y mensajes de respuesta
   const manejarAuth = async (e) => {
-    // Evita reload del navegador y limpia el estado previo
     e.preventDefault()
     setMensaje({ texto: '', tipo: '' })
     setCargando(true)
@@ -32,7 +29,6 @@ function Registro() {
         })
 
         if (error) {
-          // Si el error es "Invalid login credentials", asumimos que no existe o clave errada
           if (error.message.includes("Invalid login")) {
             setMensaje({ 
               texto: '❌ Usuario no encontrado o contraseña incorrecta. ¿Quieres crear una cuenta?', 
@@ -42,12 +38,10 @@ function Registro() {
             throw error
           }
         }
-        // Si no hay error, App.jsx detectará la sesión automáticamente
 
       } else {
         // === MODO CREAR CUENTA (REGISTRO) ===
 
-        // 0. Validar campos extra
         if (!username.trim()) {
           throw new Error('El username es obligatorio.')
         }
@@ -61,12 +55,10 @@ function Registro() {
           throw new Error('El apellido es obligatorio.')
         }
 
-        // 1. Validar dominio UNIMET
         if (!email.endsWith('@correo.unimet.edu.ve')) {
           throw new Error('Solo se permiten correos @correo.unimet.edu.ve')
         }
 
-        // 2. Validar contraseña segura mínima
         const regex = /^(?=.*\d)(?=.*[A-Z]).{8,}$/
         if (!regex.test(password)) {
           throw new Error('La contraseña debe tener: 8 caracteres, 1 mayúscula y 1 número.')
@@ -76,7 +68,6 @@ function Registro() {
           throw new Error('Las contraseñas no coinciden.')
         }
 
-        // 3. Crear usuario en Supabase
         const displayName = `${nombre.trim()} ${apellido.trim()}`.trim()
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -117,7 +108,6 @@ function Registro() {
           tipo: 'exito' 
         })
 
-        // Redirigir a modo login después de 2 segundos
         setTimeout(() => {
           setEsLogin(true)
           setMensaje({ texto: '', tipo: '' })
@@ -125,10 +115,8 @@ function Registro() {
       }
 
     } catch (error) {
-      // Mensajes de error controlados para UI
       setMensaje({ texto: '⚠️ ' + error.message, tipo: 'error' })
     } finally {
-      // Termina el estado de carga en cualquier caso
       setCargando(false)
     }
   }
@@ -140,18 +128,16 @@ function Registro() {
       <div className="auth-header">
         <div className="brand">
           <div className="logoDot"></div>
-          <span className="brandTitle" style={{ fontSize: '28px' }}>FLUX</span>
+          <span className="brandTitle" style={{ fontSize: '32px' }}>FLUX</span>
         </div>
-        <span className="brandSubtitle" style={{ fontSize: '16px' }}>
-          {/* Subtítulo cambia según si es login o registro */}
+        <span className="brandSubtitle" style={{ fontSize: '15px' }}>
           {esLogin ? 'Bienvenido de nuevo' : 'Únete a la comunidad'}
         </span>
       </div>
 
-      {/* TARJETA CENTRADA Y GRANDE */}
+      {/* TARJETA CENTRADA */}
       <div className="card auth-card-width">
-        <h2 className="text-center mb-4" style={{marginTop: 0}}>
-          {/* Título cambia según si es login o registro */}
+        <h2 className="text-center" style={{ marginBottom: '24px' }}>
           {esLogin ? 'Iniciar Sesión' : 'Crear Usuario'}
         </h2>
         
@@ -167,10 +153,11 @@ function Registro() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              style={{ marginTop: 0 }}
             />
           </div>
 
-          {/* Input: display name (solo registro) */}
+          {/* Input: username (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
               <label className="label">Username</label>
@@ -181,10 +168,12 @@ function Registro() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
             </div>
           )}
 
+          {/* Input: teléfono (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
               <label className="label">Teléfono</label>
@@ -195,10 +184,12 @@ function Registro() {
                 value={telefono}
                 onChange={(e) => setTelefono(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
             </div>
           )}
 
+          {/* Input: nombre (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
               <label className="label">Nombre</label>
@@ -209,10 +200,12 @@ function Registro() {
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
             </div>
           )}
 
+          {/* Input: apellido (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
               <label className="label">Apellido</label>
@@ -223,6 +216,7 @@ function Registro() {
                 value={apellido}
                 onChange={(e) => setApellido(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
             </div>
           )}
@@ -234,26 +228,15 @@ function Registro() {
               <input 
                 className="input" 
                 type={mostrarPassword ? "text" : "password"} 
-                placeholder={esLogin ? "Tu contraseña" : "Mín. 8 carácteres, 1 Mayúscula, 1 Número"}
+                placeholder={esLogin ? "Tu contraseña" : "Mín. 8 caracteres, 1 Mayúscula, 1 Número"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
               <button
                 type="button"
-                style={{
-                  position: 'absolute',
-                  right: 10,
-                  top: 10,
-                  padding: 0,
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--texto)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer'
-                }}
+                className="password-eye"
                 aria-label={mostrarPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                 aria-pressed={mostrarPassword}
                 onClick={() => setMostrarPassword(v => !v)}
@@ -295,6 +278,7 @@ function Registro() {
             </div>
           </div>
 
+          {/* Input: confirmar contraseña (solo registro) */}
           {!esLogin && (
             <div className="mb-4">
               <label className="label">Confirmar contraseña</label>
@@ -305,24 +289,27 @@ function Registro() {
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
                 required
+                style={{ marginTop: 0 }}
               />
             </div>
           )}
 
-          {/* Botón Principal (Cambia de color o texto según el modo) */}
+          {/* Botón Principal */}
           <button 
             type="submit" 
             className="btn btnPrimary" 
             disabled={cargando}
           >
-            {/* Botón principal del formulario */}
             {cargando ? 'Procesando...' : (esLogin ? 'Iniciar Sesión' : 'Registrarse')}
           </button>
 
         </form>
 
         {/* Separador */}
-        <div style={{ margin: '20px 0', borderTop: '1px solid var(--borde)' }}></div>
+        <div style={{ 
+          margin: '24px 0', 
+          borderTop: '1px solid rgba(37, 52, 63, 0.12)' 
+        }}></div>
 
         {/* Botón para cambiar de modo */}
         <p className="text-center label">
@@ -332,20 +319,23 @@ function Registro() {
           type="button" 
           className="btn btn-secundario"
           onClick={() => {
-            // Alterna entre login y registro
             setEsLogin(!esLogin)
-            setMensaje({ text: '', tipo: '' }) // Limpiar errores al cambiar
+            setMensaje({ text: '', tipo: '' })
           }}
         >
-          {/* Botón para alternar modo */}
-          {esLogin ? 'Crear Usuario Nuevo' : 'Volver a Iniciar Sesión'}
+          {esLogin ? 'Crear Usuario Nuevo' : 'Iniciar Sesión'}
         </button>
 
         {/* Alertas / Notificaciones */}
         {mensaje.texto && (
           <div className={mensaje.tipo === 'error' ? 'alert' : 'preview'} style={{ marginTop: '20px' }}>
-            <span className="label" style={{marginBottom: 0, color: 'var(--texto)', textAlign: 'center', display: 'block'}}>
-              {/* Mensaje de error o éxito */}
+            <span className="label" style={{
+              marginBottom: 0, 
+              color: 'var(--texto)', 
+              textAlign: 'center', 
+              display: 'block',
+              fontWeight: 500
+            }}>
               {mensaje.texto}
             </span>
           </div>
