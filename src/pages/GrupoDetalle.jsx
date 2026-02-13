@@ -68,6 +68,72 @@ export default function GrupoDetalle() {
       }));
   }, [grupo]);
 
+  const streamItems = useMemo(() => {
+    const items = grupo?.actividad || [];
+
+    return items
+      .filter(a => {
+        const msg = `${a.mensaje || ""}`;
+        return (
+          msg.startsWith("ANUNCIO::") ||
+          msg.startsWith("ARCHIVO::") ||
+          msg.startsWith("RENOMBRE::") ||
+          msg.includes("se ha unido") ||
+          msg.includes("creo el grupo") ||
+          msg.includes("creó el grupo")
+        );
+      })
+      .map(a => {
+        const msg = `${a.mensaje || ""}`;
+        const autorPorId = grupo?.miembros?.find(m => m.user_id === a.actor_id)?.nombre;
+
+        if (msg.startsWith("ANUNCIO::")) {
+          return {
+            tipo: "anuncio",
+            autor: autorPorId || "Creador",
+            fecha: a.fecha,
+            texto: msg.replace("ANUNCIO::", "")
+          };
+        }
+
+        if (msg.startsWith("ARCHIVO::")) {
+          return {
+            tipo: "archivo",
+            autor: autorPorId || "Sistema",
+            fecha: a.fecha,
+            texto: msg.replace("ARCHIVO::", "")
+          };
+        }
+
+        if (msg.startsWith("RENOMBRE::")) {
+          return {
+            tipo: "renombre",
+            autor: autorPorId || "Sistema",
+            fecha: a.fecha,
+            texto: msg.replace("RENOMBRE::", "")
+          };
+        }
+
+        const autorPorTexto = msg.match(/^(.+?)\sse ha unido/i)?.[1]?.trim();
+        const autor = autorPorId || autorPorTexto || "Sistema";
+        if (msg.includes("se ha unido")) {
+          return {
+            tipo: "union",
+            autor,
+            fecha: a.fecha,
+            texto: `${autor} se unió al grupo`
+          };
+        }
+
+        return {
+          tipo: "sistema",
+          autor,
+          fecha: a.fecha,
+          texto: msg
+        };
+      });
+  }, [grupo]);
+
   async function recargarGrupo() {
     if (!codigo) return;
     const g = await obtenerVistaPreviaPorCodigo(codigo);
@@ -79,9 +145,15 @@ export default function GrupoDetalle() {
 
   async function listarArchivos() {
     try {
-      const { data, error: listError } = await supabase.storage
-        .from("Flux_repositorioGrupos")
-        .list(`archivos/${codigo}`);
+      if (!grupo?.id) {
+        setArchivosSubidos([]);
+        return;
+      }
+      const { data, error: listError } = await supabase
+        .from("grupo_archivos")
+        .select("path, nombre, created_at")
+        .eq("grupo_id", grupo.id)
+        .order("created_at", { ascending: false });
       if (listError) throw listError;
       setArchivosSubidos(data || []);
     } catch (e) {
@@ -179,6 +251,14 @@ export default function GrupoDetalle() {
 
       setMensajeSubida(`${archivosSeleccionados.length} archivo(s) subido(s) exitosamente.`);
       setArchivosSeleccionados([]);
+      if (grupo?.id && userId) {
+        await supabase.from("grupo_actividad").insert({
+          grupo_id: grupo.id,
+          actor_id: userId,
+          mensaje: `ARCHIVO::${displayName || "Usuario"} subió ${archivosSeleccionados.length} archivo(s).`
+        });
+      }
+      await recargarGrupo();
       await listarArchivos();
     } catch (e) {
       setMensajeSubida(`Error al subir: ${e.message}`);
@@ -192,12 +272,20 @@ export default function GrupoDetalle() {
     const { error: removeError } = await supabase.storage
       .from("Flux_repositorioGrupos")
       .remove([fullPath]);
-    if (removeError) {
+    if (removeError && !`${removeError.message}`.includes("22P02")) {
       setMensajeSubida(`Error al eliminar archivo: ${removeError.message}`);
       return;
     }
 
     await eliminarArchivoGrupo({ grupoId: grupo.id, path: fullPath });
+    if (userId) {
+      await supabase.from("grupo_actividad").insert({
+        grupo_id: grupo.id,
+        actor_id: userId,
+        mensaje: `ARCHIVO::${displayName || "Usuario"} eliminó un archivo del grupo.`
+      });
+    }
+    await recargarGrupo();
     await listarArchivos();
   }
 
@@ -231,8 +319,15 @@ export default function GrupoDetalle() {
   async function manejarGuardarNombre() {
     if (!grupo) return;
     if (!nuevoNombreGrupo.trim()) return;
-    await actualizarNombreGrupo({ grupoId: grupo.id, nombre: nuevoNombreGrupo });
+    await actualizarNombreGrupo({
+      grupoId: grupo.id,
+      nombre: nuevoNombreGrupo,
+      actorId: userId,
+      actorNombre: displayName,
+      nombreAnterior: grupo.nombre
+    });
     setGrupo(prev => ({ ...prev, nombre: nuevoNombreGrupo.trim() }));
+    await recargarGrupo();
   }
 
   async function manejarExpulsar(miembroId) {
@@ -437,25 +532,27 @@ export default function GrupoDetalle() {
           )}
 
           <div className="group-feed">
-            {anuncios.map((a, i) => {
-              const autor = grupo.miembros.find(m => m.user_id === a.actor_id)?.nombre || "Creador";
+            {streamItems.map((item, i) => {
               return (
-                <article key={`${a.fecha}-${i}`} className="feed-card">
+                <article key={`${item.fecha}-${i}`} className="feed-card">
                   <div className="feed-card-header">
-                    <div className="feed-avatar">{autor.slice(0, 1).toUpperCase()}</div>
+                    <div className="feed-avatar">{item.autor.slice(0, 1).toUpperCase()}</div>
                     <div>
-                      <div className="feed-author">{autor}</div>
-                      <div className="feed-date">{new Date(a.fecha).toLocaleString()}</div>
+                      <div className="feed-author">
+                        {item.autor}
+                        {item.tipo === "union" ? " · Se unió" : ""}
+                      </div>
+                      <div className="feed-date">{new Date(item.fecha).toLocaleString()}</div>
                     </div>
                   </div>
-                  <div className="feed-text">{a.texto}</div>
+                  <div className="feed-text">{item.texto}</div>
                 </article>
               );
             })}
-            {anuncios.length === 0 && (
+            {streamItems.length === 0 && (
               <div className="card">
                 <div className="label" style={{ marginBottom: 0 }}>
-                  Aún no hay anuncios del creador.
+                  Aún no hay actividad en el stream.
                 </div>
               </div>
             )}
@@ -511,9 +608,10 @@ export default function GrupoDetalle() {
 
           <div className="archivos-grid">
             {archivosSubidos.map((file, idx) => {
-              const fullPath = `archivos/${codigo}/${file.name}`;
+              const fullPath = file.path;
               const { data } = supabase.storage.from("Flux_repositorioGrupos").getPublicUrl(fullPath);
-              const extension = file.name.split(".").pop().toLowerCase();
+              const nombre = file.nombre || fullPath?.split("/").pop() || "archivo";
+              const extension = nombre.split(".").pop().toLowerCase();
               const icono = extension === "pdf" ? "📄" : extension === "docx" ? "📝" : extension === "png" ? "🖼️" : "📎";
 
               return (
@@ -521,8 +619,10 @@ export default function GrupoDetalle() {
                   <a href={data.publicUrl} target="_blank" rel="noopener noreferrer" className="archivo-link">
                     <div className="archivo-icon">{icono}</div>
                     <div className="archivo-info">
-                      <div className="archivo-nombre">{file.name}</div>
-                      <div className="archivo-meta">{new Date(file.created_at).toLocaleDateString()}</div>
+                      <div className="archivo-nombre">{nombre}</div>
+                      <div className="archivo-meta">
+                        {file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}
+                      </div>
                     </div>
                   </a>
                   {esAdmin && (

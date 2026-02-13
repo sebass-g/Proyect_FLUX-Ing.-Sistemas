@@ -30,7 +30,7 @@
   
   /* Tipografía mejorada */
   --fuente: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-  --fuente-display: "Plus Jakarta Sans", "Inter", sans-serif;
+  --fuente-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
   
   /* Espaciado consistente */
   --space-1: 4px;
@@ -47,6 +47,13 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
 }
 
 html {
@@ -1285,6 +1292,37 @@ select.input {
   padding: 10px 12px;
   color: #eef2f7;
   font-size: 13px;
+}
+
+.repo-suggest-list {
+  display: grid;
+  gap: 10px;
+}
+
+.repo-suggest-card {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: linear-gradient(135deg, var(--drawer-a, #31424f), var(--drawer-b, #3f5567));
+  color: #ffffff;
+  border-radius: var(--radio);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.repo-suggest-name {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+
+.repo-suggest-meta {
+  display: block;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .drawer-horario-list {

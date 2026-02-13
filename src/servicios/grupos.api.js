@@ -1,5 +1,15 @@
 import { supabase } from "../config/supabaseClient";
 
+function normalizarTexto(valor = "") {
+  return `${valor}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function generarCodigo(longitud = 6) {
   const caracteres = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let resultado = "";
@@ -217,12 +227,34 @@ export async function unirseAGrupoPorCodigo({ codigo, nombreUsuario }) {
   return mapearGrupo(grupo, miembros, actividad);
 }
 
-export async function actualizarNombreGrupo({ grupoId, nombre }) {
+export async function actualizarNombreGrupo({
+  grupoId,
+  nombre,
+  actorId = null,
+  actorNombre = "",
+  nombreAnterior = ""
+}) {
+  const nuevoNombre = nombre.trim();
   const { error } = await supabase
     .from("grupos")
-    .update({ nombre: nombre.trim() })
+    .update({ nombre: nuevoNombre })
     .eq("id", grupoId);
   if (error) throw error;
+
+  // Registro de actividad (best-effort): no bloqueamos el flujo si falla.
+  if (actorId) {
+    const mensaje = `RENOMBRE::${actorNombre || "Usuario"} cambió el nombre del grupo${nombreAnterior ? ` de "${nombreAnterior}"` : ""} a "${nuevoNombre}"`;
+    const { error: actividadError } = await supabase
+      .from("grupo_actividad")
+      .insert({
+        grupo_id: grupoId,
+        actor_id: actorId,
+        mensaje
+      });
+    if (actividadError) {
+      console.warn("No se pudo registrar actividad de renombre:", actividadError.message);
+    }
+  }
 }
 
 export async function expulsarMiembro({ grupoId, miembroId }) {
@@ -280,4 +312,66 @@ export async function abandonarGrupo({ grupoId }) {
       .eq("id", grupoId);
     if (deleteGroupError) throw deleteGroupError;
   }
+}
+
+export async function buscarRepositoriosPublicos(textoBusqueda) {
+  const term = `${textoBusqueda || ""}`.trim();
+  if (!term) return [];
+  const termNorm = normalizarTexto(term);
+  const termTokens = termNorm.split(" ").filter(Boolean);
+
+  const [{ data: grupos, error: errorGrupos }, { data: admins, error: errorAdmins }, { data: archivos, error: errorArchivos }] =
+    await Promise.all([
+      supabase
+        .from("grupos")
+        .select("id, nombre, codigo, creador_id")
+        .limit(250),
+      supabase
+        .from("grupo_miembros")
+        .select("grupo_id, display_name")
+        .eq("is_admin", true)
+        .limit(250),
+      supabase
+        .from("grupo_archivos")
+        .select("grupo_id, id")
+        .limit(1000)
+    ]);
+
+  if (errorGrupos) throw errorGrupos;
+  if (errorAdmins) throw errorAdmins;
+  if (errorArchivos) throw errorArchivos;
+
+  const adminPorGrupo = new Map((admins || []).map(a => [a.grupo_id, a.display_name]));
+  const countArchivosPorGrupo = new Map();
+  for (const a of archivos || []) {
+    countArchivosPorGrupo.set(a.grupo_id, (countArchivosPorGrupo.get(a.grupo_id) || 0) + 1);
+  }
+
+  return (grupos || [])
+    .map(g => ({
+      id: g.id,
+      nombre: g.nombre,
+      codigo: g.codigo,
+      adminNombre: adminPorGrupo.get(g.id) || "Admin",
+      archivosCount: countArchivosPorGrupo.get(g.id) || 0
+    }))
+    .filter(g => {
+      const nombreNorm = normalizarTexto(g.nombre);
+      const adminNorm = normalizarTexto(g.adminNombre);
+      const textoNormalizado = `${nombreNorm} ${adminNorm}`;
+
+      if (!termTokens.length) return false;
+      return termTokens.every(token => textoNormalizado.includes(token));
+    })
+    .sort((a, b) => b.archivosCount - a.archivosCount || a.nombre.localeCompare(b.nombre));
+}
+
+export async function listarArchivosGrupoPorId({ grupoId }) {
+  const { data, error } = await supabase
+    .from("grupo_archivos")
+    .select("id, path, nombre, created_at")
+    .eq("grupo_id", grupoId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }

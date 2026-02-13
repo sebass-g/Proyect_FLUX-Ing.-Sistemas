@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   abandonarGrupo,
   actualizarNombreGrupo,
+  buscarRepositoriosPublicos,
   crearGrupo,
   listarGruposDelUsuario,
   obtenerVistaPreviaPorCodigo,
@@ -40,6 +41,8 @@ export default function Home() {
   const [accionAbierta, setAccionAbierta] = useState("");
   const [busquedaAbierta, setBusquedaAbierta] = useState(false);
   const [busquedaTexto, setBusquedaTexto] = useState("");
+  const [reposSugeridos, setReposSugeridos] = useState([]);
+  const [buscandoRepos, setBuscandoRepos] = useState(false);
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
   const [grupoEditando, setGrupoEditando] = useState(null);
   const [nuevoNombreGrupoEditar, setNuevoNombreGrupoEditar] = useState("");
@@ -76,13 +79,28 @@ export default function Home() {
       }));
   }, [horario]);
 
-  const gruposFiltrados = useMemo(() => {
-    const q = busquedaTexto.trim().toLowerCase();
-    if (!q) return gruposUsuario;
-    return gruposUsuario.filter(g =>
-      `${g.nombre || ""} ${g.codigo || ""}`.toLowerCase().includes(q)
-    );
-  }, [busquedaTexto, gruposUsuario]);
+  useEffect(() => {
+    if (!busquedaAbierta) return;
+    const q = busquedaTexto.trim();
+    if (!q) {
+      setReposSugeridos([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setBuscandoRepos(true);
+        const resultados = await buscarRepositoriosPublicos(q);
+        setReposSugeridos(resultados);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBuscandoRepos(false);
+      }
+    }, 220);
+
+    return () => clearTimeout(timer);
+  }, [busquedaAbierta, busquedaTexto]);
 
   async function cargarGrupos() {
     try {
@@ -267,7 +285,10 @@ export default function Home() {
     try {
       await actualizarNombreGrupo({
         grupoId: grupoEditando.id,
-        nombre: nuevoNombreGrupoEditar.trim()
+        nombre: nuevoNombreGrupoEditar.trim(),
+        actorId: userId,
+        actorNombre: nombreUsuario,
+        nombreAnterior: grupoEditando.nombre || ""
       });
       setGrupoEditando(null);
       setNuevoNombreGrupoEditar("");
@@ -478,11 +499,11 @@ export default function Home() {
           className="home-footer-btn"
           aria-label="Buscar grupos"
           onClick={() => {
-            setBusquedaAbierta(true);
-            setFabAbierto(false);
-            setMenuGrupoAbiertoId(null);
-          }}
-        >
+                setBusquedaAbierta(true);
+                setFabAbierto(false);
+                setMenuGrupoAbiertoId(null);
+              }}
+            >
           <svg viewBox="0 0 24 24" className="home-footer-icon" aria-hidden="true">
             <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
             <path d="M20 20L16.8 16.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -603,7 +624,7 @@ export default function Home() {
         <div className="modal-overlay" onClick={() => setBusquedaAbierta(false)}>
           <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Buscar grupo</h3>
+              <h3>Buscar repositorios</h3>
               <button className="modal-close" onClick={() => setBusquedaAbierta(false)}>
                 ✕
               </button>
@@ -613,24 +634,39 @@ export default function Home() {
                 className="input"
                 value={busquedaTexto}
                 onChange={e => setBusquedaTexto(e.target.value)}
-                placeholder="Buscar por nombre o código"
+                placeholder="Buscar por nombre del grupo o admin"
               />
-              <div className="drawer-list" style={{ marginTop: 12 }}>
-                {gruposFiltrados.map(g => (
+              <div className="repo-suggest-list" style={{ marginTop: 12 }}>
+                {reposSugeridos.map(repo => (
                   <button
-                    key={g.id}
-                    className="drawer-item"
+                    key={repo.id}
+                    className="repo-suggest-card"
+                    style={{
+                      "--drawer-a": obtenerColorGrupo(repo.codigo || repo.nombre || "").a,
+                      "--drawer-b": obtenerColorGrupo(repo.codigo || repo.nombre || "").b
+                    }}
                     onClick={() => {
                       setBusquedaAbierta(false);
                       setBusquedaTexto("");
-                      navigate(`/grupos/${g.codigo}`);
+                      navigate(`/repos/${repo.codigo}`);
                     }}
                   >
-                    <span>{g.nombre}</span>
-                    <small>{g.codigo}</small>
+                    <span className="repo-suggest-name">{repo.nombre}</span>
+                    <small className="repo-suggest-meta">
+                      {repo.codigo} · Admin: {repo.adminNombre}
+                    </small>
+                    <small className="repo-suggest-meta">
+                      {repo.archivosCount} archivo(s)
+                    </small>
                   </button>
                 ))}
-                {gruposFiltrados.length === 0 && <div className="label">Sin resultados</div>}
+                {buscandoRepos && <div className="label">Buscando...</div>}
+                {!buscandoRepos && busquedaTexto.trim() && reposSugeridos.length === 0 && (
+                  <div className="label">Sin resultados</div>
+                )}
+              </div>
+              <div className="label" style={{ marginTop: 12, marginBottom: 0 }}>
+                Toca una opción para abrir su repositorio en modo lectura.
               </div>
             </div>
           </div>
