@@ -5,6 +5,7 @@ import {
   actualizarNombreGrupo,
   buscarRepositoriosPublicos,
   crearGrupo,
+  crearRepositorioPublico,
   listarGruposDelUsuario,
   obtenerVistaPreviaPorCodigo,
   unirseAGrupoPorCodigo
@@ -27,6 +28,8 @@ export default function Home() {
   const [nombreUsuario, setNombreUsuario] = useState("");
   const [codigoIngreso, setCodigoIngreso] = useState("");
   const [nombreGrupo, setNombreGrupo] = useState("");
+  const [esPublicoNuevoGrupo, setEsPublicoNuevoGrupo] = useState(false);
+  const [tituloRepoPublico, setTituloRepoPublico] = useState("");
   const [vistaPrevia, setVistaPrevia] = useState(null);
   const [error, setError] = useState("");
   const [gruposUsuario, setGruposUsuario] = useState([]);
@@ -41,6 +44,7 @@ export default function Home() {
   const [accionAbierta, setAccionAbierta] = useState("");
   const [busquedaAbierta, setBusquedaAbierta] = useState(false);
   const [busquedaTexto, setBusquedaTexto] = useState("");
+  const [filtroFechaRepos, setFiltroFechaRepos] = useState("all");
   const [reposSugeridos, setReposSugeridos] = useState([]);
   const [buscandoRepos, setBuscandoRepos] = useState(false);
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
@@ -82,7 +86,7 @@ export default function Home() {
   useEffect(() => {
     if (!busquedaAbierta) return;
     const q = busquedaTexto.trim();
-    if (!q) {
+    if (!q && filtroFechaRepos === "all") {
       setReposSugeridos([]);
       return;
     }
@@ -90,7 +94,7 @@ export default function Home() {
     const timer = setTimeout(async () => {
       try {
         setBuscandoRepos(true);
-        const resultados = await buscarRepositoriosPublicos(q);
+        const resultados = await buscarRepositoriosPublicos(q, filtroFechaRepos);
         setReposSugeridos(resultados);
       } catch (e) {
         setError(e.message);
@@ -100,7 +104,7 @@ export default function Home() {
     }, 220);
 
     return () => clearTimeout(timer);
-  }, [busquedaAbierta, busquedaTexto]);
+  }, [busquedaAbierta, busquedaTexto, filtroFechaRepos]);
 
   async function cargarGrupos() {
     try {
@@ -236,14 +240,34 @@ export default function Home() {
 
     const grupo = await crearGrupo({
       nombreGrupo,
-      nombreUsuario
+      nombreUsuario,
+      esPublico: esPublicoNuevoGrupo
     });
 
       setNombreGrupo("");
+      setEsPublicoNuevoGrupo(false);
       setAccionAbierta("");
       setFabAbierto(false);
       await cargarGrupos();
       navigate(`/grupos/${grupo.codigo}`);
+  }
+
+  async function manejarCrearRepoPublico() {
+    setError("");
+    if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
+    if (!tituloRepoPublico.trim()) return setError("Ingrese el título del repositorio.");
+
+    try {
+      await crearRepositorioPublico({
+        titulo: tituloRepoPublico,
+        creadorNombre: nombreUsuario
+      });
+      setTituloRepoPublico("");
+      setAccionAbierta("");
+      setFabAbierto(false);
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function manejarUnirse() {
@@ -491,6 +515,16 @@ export default function Home() {
           >
             Unirme por código
           </button>
+          <button
+            className="fab-menu-item"
+            onClick={() => {
+              setAccionAbierta("crearRepoPublico");
+              setFabAbierto(false);
+              setError("");
+            }}
+          >
+            Crear repositorio público
+          </button>
         </div>
       )}
 
@@ -546,7 +580,13 @@ export default function Home() {
         <div className="modal-overlay" onClick={() => setAccionAbierta("")}>
           <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{accionAbierta === "crear" ? "Crear grupo" : "Unirme al grupo"}</h3>
+              <h3>
+                {accionAbierta === "crear"
+                  ? "Crear grupo"
+                  : accionAbierta === "crearRepoPublico"
+                    ? "Crear repositorio público"
+                    : "Unirme al grupo"}
+              </h3>
               <button className="modal-close" onClick={() => setAccionAbierta("")}>✕</button>
             </div>
             <div className="modal-body">
@@ -561,6 +601,22 @@ export default function Home() {
                   />
                   <button className="btn btnPrimary" onClick={manejarCrearGrupo}>
                     Crear y generar código
+                  </button>
+                </>
+              )}
+
+              {accionAbierta === "crearRepoPublico" && (
+                <>
+                  <label className="label">Título del repositorio</label>
+                  <input
+                    className="input"
+                    value={tituloRepoPublico}
+                    onChange={e => setTituloRepoPublico(e.target.value)}
+                    placeholder="Ej: Apuntes de Álgebra Lineal"
+                  />
+                  <div className="label">Creador: {nombreUsuario || "Usuario"}</div>
+                  <button className="btn btnPrimary" onClick={manejarCrearRepoPublico}>
+                    Crear repositorio público
                   </button>
                 </>
               )}
@@ -634,34 +690,60 @@ export default function Home() {
                 className="input"
                 value={busquedaTexto}
                 onChange={e => setBusquedaTexto(e.target.value)}
-                placeholder="Buscar por nombre del grupo o admin"
+                placeholder="Buscar por grupo, admin, título o creador"
               />
+              <select
+                className="input"
+                value={filtroFechaRepos}
+                onChange={e => setFiltroFechaRepos(e.target.value)}
+                style={{ marginTop: 8 }}
+              >
+                <option value="all">Sin filtro</option>
+                <option value="1m">Último mes</option>
+                <option value="3m">Últimos 3 meses</option>
+                <option value="1y">Último año</option>
+              </select>
               <div className="repo-suggest-list" style={{ marginTop: 12 }}>
                 {reposSugeridos.map(repo => (
                   <button
-                    key={repo.id}
+                    key={`${repo.tipo}-${repo.id}`}
                     className="repo-suggest-card"
                     style={{
-                      "--drawer-a": obtenerColorGrupo(repo.codigo || repo.nombre || "").a,
-                      "--drawer-b": obtenerColorGrupo(repo.codigo || repo.nombre || "").b
+                      "--drawer-a": obtenerColorGrupo(repo.codigo || repo.nombre || repo.titulo || "").a,
+                      "--drawer-b": obtenerColorGrupo(repo.codigo || repo.nombre || repo.titulo || "").b
                     }}
                     onClick={() => {
                       setBusquedaAbierta(false);
                       setBusquedaTexto("");
-                      navigate(`/repos/${repo.codigo}`);
+                      if (repo.tipo === "grupo") {
+                        navigate(`/repos/${repo.codigo}`);
+                      } else {
+                        navigate(`/repos-publicos/${repo.id}`);
+                      }
                     }}
                   >
-                    <span className="repo-suggest-name">{repo.nombre}</span>
-                    <small className="repo-suggest-meta">
-                      {repo.codigo} · Admin: {repo.adminNombre}
-                    </small>
-                    <small className="repo-suggest-meta">
-                      {repo.archivosCount} archivo(s)
-                    </small>
+                    <span className="repo-suggest-name">{repo.nombre || repo.titulo}</span>
+                    {repo.tipo === "grupo" ? (
+                      <>
+                        <small className="repo-suggest-meta">
+                          {repo.codigo} · Admin: {repo.adminNombre}
+                        </small>
+                        <small className="repo-suggest-meta">
+                          {repo.archivosCount} archivo(s)
+                        </small>
+                      </>
+                    ) : (
+                      <>
+                        <small className="repo-suggest-meta">Creador: {repo.creadorNombre}</small>
+                        <small className="repo-suggest-meta">
+                          Creado: {repo.createdAt ? new Date(repo.createdAt).toLocaleDateString() : "-"}
+                        </small>
+                      </>
+                    )}
                   </button>
                 ))}
                 {buscandoRepos && <div className="label">Buscando...</div>}
-                {!buscandoRepos && busquedaTexto.trim() && reposSugeridos.length === 0 && (
+                {!buscandoRepos && (busquedaTexto.trim() || filtroFechaRepos !== "all") && reposSugeridos.length === 0 && (
                   <div className="label">Sin resultados</div>
                 )}
               </div>

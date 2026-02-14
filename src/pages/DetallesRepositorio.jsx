@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { listarArchivosGrupoPorId, obtenerVistaPreviaPorCodigo } from "../servicios/grupos.api";
+import { listarArchivosGrupoPorId, obtenerRepositorioParaLecturaPorCodigo } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorGrupo } from "../utils/groupColors";
 import "../estilos/flux.css";
@@ -13,16 +13,24 @@ export default function DetallesRepositorio() {
   const [tab, setTab] = useState("archivos");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     (async () => {
       setCargando(true);
-      const g = await obtenerVistaPreviaPorCodigo(codigo);
-      setGrupo(g);
-      if (g?.id) {
-        const files = await listarArchivosGrupoPorId({ grupoId: g.id });
-        setArchivos(files);
-      } else {
+      setError("");
+      try {
+        const g = await obtenerRepositorioParaLecturaPorCodigo(codigo);
+        setGrupo(g);
+        if (g?.id) {
+          const files = await listarArchivosGrupoPorId({ grupoId: g.id });
+          setArchivos(files);
+        } else {
+          setArchivos([]);
+        }
+      } catch (e) {
+        setError(e.message);
+        setGrupo(null);
         setArchivos([]);
       }
       const {
@@ -46,6 +54,7 @@ export default function DetallesRepositorio() {
       <div className="container">
         <div className="card">
           <strong>Repositorio no encontrado</strong>
+          {error && <p>{error}</p>}
           <button className="btn arrow-back" onClick={() => navigate("/grupos")} aria-label="Atrás">
             <svg className="arrow-back-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M15 6L9 12L15 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />

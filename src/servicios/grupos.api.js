@@ -39,6 +39,7 @@ function mapearGrupo(grupo, miembros, actividad) {
     nombre: grupo.nombre,
     codigo: grupo.codigo,
     creadorId: grupo.creador_id,
+    esPublico: Boolean(grupo.es_publico),
     miembros: (miembros || []).map(m => ({
       id: m.id,
       nombre: m.display_name,
@@ -78,7 +79,7 @@ export async function listarGruposDelUsuario() {
     .filter(Boolean);
 }
 
-export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
+export async function crearGrupo({ nombreGrupo, nombreUsuario, esPublico = false }) {
   const {
     data: { session },
     error: sessionError
@@ -96,7 +97,8 @@ export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
     .insert({
       nombre,
       codigo,
-      creador_id: user.id
+      creador_id: user.id,
+      es_publico: esPublico
     })
     .select("*")
     .single();
@@ -257,6 +259,94 @@ export async function actualizarNombreGrupo({
   }
 }
 
+async function obtenerUsuarioActual() {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  return session?.user || null;
+}
+
+async function usuarioPuedeLeerGrupo({ grupoId, creadorId, esPublico, userId }) {
+  if (esPublico) return true;
+  if (!userId) return false;
+  if (creadorId && creadorId === userId) return true;
+
+  const { data: miembro, error: miembroError } = await supabase
+    .from("grupo_miembros")
+    .select("id")
+    .eq("grupo_id", grupoId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (miembroError) throw miembroError;
+  return Boolean(miembro);
+}
+
+export async function obtenerRepositorioParaLecturaPorCodigo(codigo) {
+  const codigoNormalizado = codigo.trim().toUpperCase();
+  const { data: grupo, error: errorGrupo } = await supabase
+    .from("grupos")
+    .select("id, nombre, codigo, creador_id, es_publico")
+    .eq("codigo", codigoNormalizado)
+    .maybeSingle();
+  if (errorGrupo) throw errorGrupo;
+  if (!grupo) return null;
+
+  const user = await obtenerUsuarioActual();
+  const permitido = await usuarioPuedeLeerGrupo({
+    grupoId: grupo.id,
+    creadorId: grupo.creador_id,
+    esPublico: Boolean(grupo.es_publico),
+    userId: user?.id || null
+  });
+  if (!permitido) return null;
+
+  const { data: miembros, error: errorMiembros } = await supabase
+    .from("grupo_miembros")
+    .select("id, user_id, display_name, is_admin")
+    .eq("grupo_id", grupo.id)
+    .order("joined_at", { ascending: true });
+  if (errorMiembros) throw errorMiembros;
+
+  const { data: actividad, error: errorActividad } = await supabase
+    .from("grupo_actividad")
+    .select("mensaje, fecha, actor_id")
+    .eq("grupo_id", grupo.id)
+    .order("fecha", { ascending: false });
+  if (errorActividad) throw errorActividad;
+
+  return mapearGrupo(grupo, miembros, actividad);
+}
+
+export async function actualizarVisibilidadGrupo({
+  grupoId,
+  esPublico,
+  actorId = null,
+  actorNombre = ""
+}) {
+  const valor = Boolean(esPublico);
+  const { error } = await supabase
+    .from("grupos")
+    .update({ es_publico: valor })
+    .eq("id", grupoId);
+  if (error) throw error;
+
+  if (actorId) {
+    const mensaje = `VISIBILIDAD::${actorNombre || "Usuario"} cambió la visibilidad del repositorio a ${valor ? "público" : "privado"}.`;
+    const { error: actividadError } = await supabase
+      .from("grupo_actividad")
+      .insert({
+        grupo_id: grupoId,
+        actor_id: actorId,
+        mensaje
+      });
+    if (actividadError) {
+      console.warn("No se pudo registrar actividad de visibilidad:", actividadError.message);
+    }
+  }
+}
+
 export async function expulsarMiembro({ grupoId, miembroId }) {
   const { error } = await supabase
     .from("grupo_miembros")
@@ -314,18 +404,47 @@ export async function abandonarGrupo({ grupoId }) {
   }
 }
 
-export async function buscarRepositoriosPublicos(textoBusqueda) {
+export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "all") {
   const term = `${textoBusqueda || ""}`.trim();
-  if (!term) return [];
   const termNorm = normalizarTexto(term);
   const termTokens = termNorm.split(" ").filter(Boolean);
+  const ahora = new Date();
 
-  const [{ data: grupos, error: errorGrupos }, { data: admins, error: errorAdmins }, { data: archivos, error: errorArchivos }] =
+  let desde = null;
+  if (filtroFecha === "1m") {
+    desde = new Date(ahora);
+    desde.setMonth(desde.getMonth() - 1);
+  } else if (filtroFecha === "3m") {
+    desde = new Date(ahora);
+    desde.setMonth(desde.getMonth() - 3);
+  } else if (filtroFecha === "1y") {
+    desde = new Date(ahora);
+    desde.setFullYear(desde.getFullYear() - 1);
+  }
+
+  if (!term && !desde) return [];
+
+  let queryGrupos = supabase
+    .from("grupos")
+    .select("id, nombre, codigo, creador_id, es_publico, created_at")
+    .eq("es_publico", true)
+    .limit(250);
+  if (desde) queryGrupos = queryGrupos.gte("created_at", desde.toISOString());
+
+  let queryReposPublicos = supabase
+    .from("repositorios_publicos")
+    .select("id, titulo, creador_id, creador_nombre, created_at")
+    .limit(250);
+  if (desde) queryReposPublicos = queryReposPublicos.gte("created_at", desde.toISOString());
+
+  const [
+    { data: grupos, error: errorGrupos },
+    { data: admins, error: errorAdmins },
+    { data: archivos, error: errorArchivos },
+    { data: reposPublicos, error: errorReposPublicos }
+  ] =
     await Promise.all([
-      supabase
-        .from("grupos")
-        .select("id, nombre, codigo, creador_id")
-        .limit(250),
+      queryGrupos,
       supabase
         .from("grupo_miembros")
         .select("grupo_id, display_name")
@@ -334,12 +453,14 @@ export async function buscarRepositoriosPublicos(textoBusqueda) {
       supabase
         .from("grupo_archivos")
         .select("grupo_id, id")
-        .limit(1000)
+        .limit(1000),
+      queryReposPublicos
     ]);
 
   if (errorGrupos) throw errorGrupos;
   if (errorAdmins) throw errorAdmins;
   if (errorArchivos) throw errorArchivos;
+  if (errorReposPublicos) throw errorReposPublicos;
 
   const adminPorGrupo = new Map((admins || []).map(a => [a.grupo_id, a.display_name]));
   const countArchivosPorGrupo = new Map();
@@ -347,26 +468,205 @@ export async function buscarRepositoriosPublicos(textoBusqueda) {
     countArchivosPorGrupo.set(a.grupo_id, (countArchivosPorGrupo.get(a.grupo_id) || 0) + 1);
   }
 
-  return (grupos || [])
+  const resultadosGrupos = (grupos || [])
     .map(g => ({
+      tipo: "grupo",
       id: g.id,
       nombre: g.nombre,
       codigo: g.codigo,
       adminNombre: adminPorGrupo.get(g.id) || "Admin",
-      archivosCount: countArchivosPorGrupo.get(g.id) || 0
+      archivosCount: countArchivosPorGrupo.get(g.id) || 0,
+      createdAt: g.created_at || null
     }))
     .filter(g => {
       const nombreNorm = normalizarTexto(g.nombre);
       const adminNorm = normalizarTexto(g.adminNombre);
       const textoNormalizado = `${nombreNorm} ${adminNorm}`;
 
-      if (!termTokens.length) return false;
+      if (!termTokens.length) return true;
       return termTokens.every(token => textoNormalizado.includes(token));
+    });
+
+  const resultadosReposPublicos = (reposPublicos || [])
+    .map(r => ({
+      tipo: "repo_publico",
+      id: r.id,
+      titulo: r.titulo,
+      creadorId: r.creador_id,
+      creadorNombre: r.creador_nombre || "Usuario",
+      createdAt: r.created_at || null
+    }))
+    .filter(r => {
+      const tituloNorm = normalizarTexto(r.titulo);
+      const creadorNorm = normalizarTexto(r.creadorNombre);
+      const textoNormalizado = `${tituloNorm} ${creadorNorm}`;
+      if (!termTokens.length) return true;
+      return termTokens.every(token => textoNormalizado.includes(token));
+    });
+
+  return [...resultadosGrupos, ...resultadosReposPublicos]
+    .sort((a, b) => {
+      const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (db !== da) return db - da;
+      const na = a.nombre || a.titulo || "";
+      const nb = b.nombre || b.titulo || "";
+      return na.localeCompare(nb);
+    });
+}
+
+export async function crearRepositorioPublico({ titulo, creadorNombre = "" }) {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  const nombre = `${creadorNombre || user.user_metadata?.display_name || "Usuario"}`.trim();
+  const tituloLimpio = `${titulo || ""}`.trim();
+  if (!tituloLimpio) throw new Error("El titulo es obligatorio.");
+
+  const { data, error } = await supabase
+    .from("repositorios_publicos")
+    .insert({
+      titulo: tituloLimpio,
+      creador_id: user.id,
+      creador_nombre: nombre
     })
-    .sort((a, b) => b.archivosCount - a.archivosCount || a.nombre.localeCompare(b.nombre));
+    .select("id, titulo, creador_id, creador_nombre, created_at")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function obtenerRepositorioPublicoPorId(id) {
+  const repoId = `${id || ""}`.trim();
+  if (!repoId) return null;
+  const { data, error } = await supabase
+    .from("repositorios_publicos")
+    .select("id, titulo, creador_id, creador_nombre, created_at")
+    .eq("id", repoId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+async function asegurarPropietarioRepositorioPublico({ repositorioId, userId }) {
+  const { data: repo, error: repoError } = await supabase
+    .from("repositorios_publicos")
+    .select("id, creador_id")
+    .eq("id", repositorioId)
+    .maybeSingle();
+  if (repoError) throw repoError;
+  if (!repo) throw new Error("Repositorio público no encontrado.");
+  if (!userId || repo.creador_id !== userId) {
+    throw new Error("Solo el creador puede modificar este repositorio.");
+  }
+  return repo;
+}
+
+export async function listarArchivosRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) return [];
+  const { data, error } = await supabase
+    .from("repositorio_publico_archivos")
+    .select("id, repositorio_id, path, nombre, mime_type, size_bytes, created_at, uploader_id")
+    .eq("repositorio_id", repoId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function subirArchivoRepositorioPublico({ repositorioId, archivo }) {
+  if (!archivo) throw new Error("Selecciona un archivo.");
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+
+  const safeName = `${archivo.name || "archivo"}`
+    .replace(/[^a-zA-Z0-9.-]/g, "_")
+    .replace(/_{2,}/g, "_");
+  const path = `repos-publicos/${repositorioId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("Flux_repositorioGrupos")
+    .upload(path, archivo);
+  if (uploadError) throw uploadError;
+
+  const { data, error } = await supabase
+    .from("repositorio_publico_archivos")
+    .insert({
+      repositorio_id: repositorioId,
+      path,
+      nombre: archivo.name || safeName,
+      mime_type: archivo.type || null,
+      size_bytes: archivo.size || null,
+      uploader_id: user.id
+    })
+    .select("id, repositorio_id, path, nombre, mime_type, size_bytes, created_at, uploader_id")
+    .single();
+  if (error) throw error;
+
+  return data;
+}
+
+export async function eliminarArchivoRepositorioPublico({ repositorioId, archivoId, path }) {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+
+  if (path) {
+    const { error: removeError } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .remove([path]);
+    if (removeError && !`${removeError.message}`.toLowerCase().includes("not found")) {
+      throw removeError;
+    }
+  }
+
+  const { error } = await supabase
+    .from("repositorio_publico_archivos")
+    .delete()
+    .eq("id", archivoId)
+    .eq("repositorio_id", repositorioId);
+  if (error) throw error;
 }
 
 export async function listarArchivosGrupoPorId({ grupoId }) {
+  const { data: grupo, error: errorGrupo } = await supabase
+    .from("grupos")
+    .select("id, creador_id, es_publico")
+    .eq("id", grupoId)
+    .maybeSingle();
+  if (errorGrupo) throw errorGrupo;
+  if (!grupo) return [];
+
+  const user = await obtenerUsuarioActual();
+  const permitido = await usuarioPuedeLeerGrupo({
+    grupoId: grupo.id,
+    creadorId: grupo.creador_id,
+    esPublico: Boolean(grupo.es_publico),
+    userId: user?.id || null
+  });
+  if (!permitido) {
+    throw new Error("No tienes permisos para ver este repositorio.");
+  }
+
   const { data, error } = await supabase
     .from("grupo_archivos")
     .select("id, path, nombre, created_at")

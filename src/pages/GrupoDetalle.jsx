@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  actualizarVisibilidadGrupo,
   actualizarNombreGrupo,
   abandonarGrupo,
   eliminarArchivoGrupo,
@@ -26,6 +27,7 @@ export default function GrupoDetalle() {
   const [tabActiva, setTabActiva] = useState("stream");
   const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
   const [nuevoAnuncio, setNuevoAnuncio] = useState("");
+  const [guardandoVisibilidad, setGuardandoVisibilidad] = useState(false);
   const [error, setError] = useState("");
 
   const [archivosSeleccionados, setArchivosSeleccionados] = useState([]);
@@ -78,6 +80,7 @@ export default function GrupoDetalle() {
           msg.startsWith("ANUNCIO::") ||
           msg.startsWith("ARCHIVO::") ||
           msg.startsWith("RENOMBRE::") ||
+          msg.startsWith("VISIBILIDAD::") ||
           msg.includes("se ha unido") ||
           msg.includes("creo el grupo") ||
           msg.includes("creó el grupo")
@@ -111,6 +114,15 @@ export default function GrupoDetalle() {
             autor: autorPorId || "Sistema",
             fecha: a.fecha,
             texto: msg.replace("RENOMBRE::", "")
+          };
+        }
+
+        if (msg.startsWith("VISIBILIDAD::")) {
+          return {
+            tipo: "visibilidad",
+            autor: autorPorId || "Sistema",
+            fecha: a.fecha,
+            texto: msg.replace("VISIBILIDAD::", "")
           };
         }
 
@@ -330,6 +342,25 @@ export default function GrupoDetalle() {
     await recargarGrupo();
   }
 
+  async function manejarCambiarVisibilidad(esPublico) {
+    if (!grupo || !esAdmin) return;
+    setError("");
+    setGuardandoVisibilidad(true);
+    try {
+      await actualizarVisibilidadGrupo({
+        grupoId: grupo.id,
+        esPublico,
+        actorId: userId,
+        actorNombre: displayName
+      });
+      await recargarGrupo();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGuardandoVisibilidad(false);
+    }
+  }
+
   async function manejarExpulsar(miembroId) {
     if (!grupo) return;
     await expulsarMiembro({ grupoId: grupo.id, miembroId });
@@ -517,6 +548,24 @@ export default function GrupoDetalle() {
 
       {tabActiva === "stream" && (
         <div className="group-tab-content">
+          {esAdmin && (
+            <div className="card">
+              <strong>Visibilidad del repositorio</strong>
+              <div className="label" style={{ marginTop: 6 }}>
+                Cuando está en público, aparece en el buscador de repositorios.
+              </div>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(grupo.esPublico)}
+                  disabled={guardandoVisibilidad}
+                  onChange={e => manejarCambiarVisibilidad(e.target.checked)}
+                />
+                <span>Repositorio público</span>
+              </label>
+            </div>
+          )}
+
           {puedePublicarAnuncio && (
             <div className="card">
               <strong>Nuevo anuncio</strong>
