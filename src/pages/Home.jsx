@@ -258,13 +258,14 @@ export default function Home() {
     if (!tituloRepoPublico.trim()) return setError("Ingrese el título del repositorio.");
 
     try {
-      await crearRepositorioPublico({
+      const repo = await crearRepositorioPublico({
         titulo: tituloRepoPublico,
         creadorNombre: nombreUsuario
       });
       setTituloRepoPublico("");
       setAccionAbierta("");
       setFabAbierto(false);
+      navigate(`/repos-publicos/${repo.id}`);
     } catch (e) {
       setError(e.message);
     }

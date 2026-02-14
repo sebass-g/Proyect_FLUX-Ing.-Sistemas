@@ -647,6 +647,40 @@ export async function eliminarArchivoRepositorioPublico({ repositorioId, archivo
   if (error) throw error;
 }
 
+export async function eliminarRepositorioPublico({ repositorioId }) {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+
+  const { data: archivos, error: archivosError } = await supabase
+    .from("repositorio_publico_archivos")
+    .select("path")
+    .eq("repositorio_id", repositorioId);
+  if (archivosError) throw archivosError;
+
+  const paths = (archivos || []).map(a => a.path).filter(Boolean);
+  if (paths.length) {
+    const { error: removeError } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .remove(paths);
+    if (removeError) {
+      throw removeError;
+    }
+  }
+
+  const { error } = await supabase
+    .from("repositorios_publicos")
+    .delete()
+    .eq("id", repositorioId);
+  if (error) throw error;
+}
+
 export async function listarArchivosGrupoPorId({ grupoId }) {
   const { data: grupo, error: errorGrupo } = await supabase
     .from("grupos")

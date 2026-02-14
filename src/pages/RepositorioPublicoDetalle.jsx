@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  eliminarRepositorioPublico,
   eliminarArchivoRepositorioPublico,
   listarArchivosRepositorioPublico,
   obtenerRepositorioPublicoPorId,
@@ -102,6 +103,18 @@ export default function RepositorioPublicoDetalle() {
     }
   }
 
+  async function manejarEliminarRepositorio() {
+    if (!repo?.id || !esCreador) return;
+    const ok = window.confirm("¿Eliminar este repositorio público? Esta acción no se puede deshacer.");
+    if (!ok) return;
+    try {
+      await eliminarRepositorioPublico({ repositorioId: repo.id });
+      navigate("/grupos");
+    } catch (e) {
+      setMensaje(`Error al eliminar repositorio: ${e.message}`);
+    }
+  }
+
   if (cargando) {
     return (
       <div className="container">
@@ -143,6 +156,13 @@ export default function RepositorioPublicoDetalle() {
         <div className="label" style={{ marginBottom: 0 }}>
           Este repositorio es público y no está vinculado a un grupo.
         </div>
+        {esCreador && (
+          <div style={{ marginTop: 12 }}>
+            <button className="btn" onClick={manejarEliminarRepositorio}>
+              Eliminar repositorio
+            </button>
+          </div>
+        )}
       </div>
 
       {esCreador && (
