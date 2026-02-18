@@ -405,6 +405,13 @@ export async function abandonarGrupo({ grupoId }) {
 }
 
 export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "all") {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const esGuest = !session?.user;
+
   const term = `${textoBusqueda || ""}`.trim();
   const termNorm = normalizarTexto(term);
   const termTokens = termNorm.split(" ").filter(Boolean);
@@ -437,30 +444,52 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
     .limit(250);
   if (desde) queryReposPublicos = queryReposPublicos.gte("created_at", desde.toISOString());
 
-  const [
-    { data: grupos, error: errorGrupos },
-    { data: admins, error: errorAdmins },
-    { data: archivos, error: errorArchivos },
-    { data: reposPublicos, error: errorReposPublicos }
-  ] =
-    await Promise.all([
-      queryGrupos,
-      supabase
-        .from("grupo_miembros")
-        .select("grupo_id, display_name")
-        .eq("is_admin", true)
-        .limit(250),
-      supabase
-        .from("grupo_archivos")
-        .select("grupo_id, id")
-        .limit(1000),
-      queryReposPublicos
-    ]);
+  let grupos = [];
+  let reposPublicos = [];
+  let admins = [];
+  let archivos = [];
 
-  if (errorGrupos) throw errorGrupos;
-  if (errorAdmins) throw errorAdmins;
-  if (errorArchivos) throw errorArchivos;
-  if (errorReposPublicos) throw errorReposPublicos;
+  if (esGuest) {
+    const [
+      { data: gruposData, error: errorGrupos },
+      { data: reposData, error: errorReposPublicos }
+    ] = await Promise.all([queryGrupos, queryReposPublicos]);
+
+    if (errorGrupos) throw errorGrupos;
+    if (errorReposPublicos) throw errorReposPublicos;
+    grupos = gruposData || [];
+    reposPublicos = reposData || [];
+  } else {
+    const [
+      { data: gruposData, error: errorGrupos },
+      { data: adminsData, error: errorAdmins },
+      { data: archivosData, error: errorArchivos },
+      { data: reposData, error: errorReposPublicos }
+    ] =
+      await Promise.all([
+        queryGrupos,
+        supabase
+          .from("grupo_miembros")
+          .select("grupo_id, display_name")
+          .eq("is_admin", true)
+          .limit(250),
+        supabase
+          .from("grupo_archivos")
+          .select("grupo_id, id")
+          .limit(1000),
+        queryReposPublicos
+      ]);
+
+    if (errorGrupos) throw errorGrupos;
+    if (errorAdmins) throw errorAdmins;
+    if (errorArchivos) throw errorArchivos;
+    if (errorReposPublicos) throw errorReposPublicos;
+
+    grupos = gruposData || [];
+    reposPublicos = reposData || [];
+    admins = adminsData || [];
+    archivos = archivosData || [];
+  }
 
   const adminPorGrupo = new Map((admins || []).map(a => [a.grupo_id, a.display_name]));
   const countArchivosPorGrupo = new Map();
@@ -480,11 +509,17 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
     }))
     .filter(g => {
       const nombreNorm = normalizarTexto(g.nombre);
+      const codigoNorm = normalizarTexto(g.codigo);
       const adminNorm = normalizarTexto(g.adminNombre);
-      const textoNormalizado = `${nombreNorm} ${adminNorm}`;
+      const textoNormalizado = `${nombreNorm} ${adminNorm} ${codigoNorm}`.trim();
+      const textoSinEspacios = textoNormalizado.replace(/\s/g, "");
+      const termSinEspacios = termNorm.replace(/\s/g, "");
 
       if (!termTokens.length) return true;
-      return termTokens.every(token => textoNormalizado.includes(token));
+      return (
+        termTokens.every(token => textoNormalizado.includes(token)) ||
+        (termSinEspacios && textoSinEspacios.includes(termSinEspacios))
+      );
     });
 
   const resultadosReposPublicos = (reposPublicos || [])
@@ -499,9 +534,14 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
     .filter(r => {
       const tituloNorm = normalizarTexto(r.titulo);
       const creadorNorm = normalizarTexto(r.creadorNombre);
-      const textoNormalizado = `${tituloNorm} ${creadorNorm}`;
+      const textoNormalizado = `${tituloNorm} ${creadorNorm}`.trim();
+      const textoSinEspacios = textoNormalizado.replace(/\s/g, "");
+      const termSinEspacios = termNorm.replace(/\s/g, "");
       if (!termTokens.length) return true;
-      return termTokens.every(token => textoNormalizado.includes(token));
+      return (
+        termTokens.every(token => textoNormalizado.includes(token)) ||
+        (termSinEspacios && textoSinEspacios.includes(termSinEspacios))
+      );
     });
 
   return [...resultadosGrupos, ...resultadosReposPublicos]

@@ -50,6 +50,7 @@ export default function Home() {
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
   const [grupoEditando, setGrupoEditando] = useState(null);
   const [nuevoNombreGrupoEditar, setNuevoNombreGrupoEditar] = useState("");
+  const [tieneSesion, setTieneSesion] = useState(false);
   const toastTimeoutRef = useRef(null);
 
   const resumenHorario = useMemo(() => {
@@ -108,6 +109,10 @@ export default function Home() {
 
   async function cargarGrupos() {
     try {
+      if (!userId) {
+        setGruposUsuario([]);
+        return;
+      }
       const grupos = await listarGruposDelUsuario();
       setGruposUsuario(grupos);
     } catch (e) {
@@ -125,6 +130,18 @@ export default function Home() {
         return;
       }
       const user = data?.session?.user;
+      if (!user) {
+        if (isMounted) {
+          setNombreUsuario("");
+          setAvatarUrl("");
+          setUserId(null);
+          setHorario([]);
+          setGruposUsuario([]);
+          setTieneSesion(false);
+        }
+        return;
+      }
+      setTieneSesion(true);
       const displayName = user?.user_metadata?.display_name?.trim();
       const avatar = user?.user_metadata?.avatar_url?.trim();
       const { data: bloquesData, error: bloquesError } = await supabase
@@ -235,6 +252,7 @@ export default function Home() {
 
   async function manejarCrearGrupo() {
     setError("");
+    if (!userId) return setError("Inicia sesión para crear grupos.");
     if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
     if (!nombreGrupo.trim()) return setError("Ingrese el nombre del grupo.");
 
@@ -254,6 +272,7 @@ export default function Home() {
 
   async function manejarCrearRepoPublico() {
     setError("");
+    if (!userId) return setError("Inicia sesión para crear repositorios públicos.");
     if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
     if (!tituloRepoPublico.trim()) return setError("Ingrese el título del repositorio.");
 
@@ -273,6 +292,7 @@ export default function Home() {
 
   async function manejarUnirse() {
     setError("");
+    if (!userId) return setError("Inicia sesión para unirte a grupos.");
     if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
     if (!codigoIngreso.trim()) return setError("Ingrese el código del grupo.");
 
@@ -431,8 +451,16 @@ export default function Home() {
       {gruposUsuario.length === 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <div className="label" style={{ marginBottom: 0 }}>
-            Aún no perteneces a ningún grupo. Usa el botón + para crear o unirte.
+            {tieneSesion
+              ? "Aún no perteneces a ningún grupo. Usa el botón + para crear o unirte."
+              : "Explora repositorios y grupos públicos desde el buscador. Inicia sesión para crear o unirte a grupos."}
           </div>
+          {!tieneSesion && (
+            <button className="btn" style={{ marginTop: 12 }} onClick={() => navigate("/auth")}
+            >
+              Iniciar sesión
+            </button>
+          )}
         </div>
       )}
 
@@ -452,49 +480,59 @@ export default function Home() {
           <div className="home-drawer-section">
             <div className="label">Grupos</div>
             <div className="drawer-list">
-              {gruposUsuario.map(g => (
-                <button
-                  key={g.id}
-                  className="drawer-item drawer-item-color"
-                  style={{
-                    "--drawer-a": obtenerColorGrupo(g.codigo || g.nombre || "").a,
-                    "--drawer-b": obtenerColorGrupo(g.codigo || g.nombre || "").b
-                  }}
-                  onClick={() => {
-                    setMenuAbierto(false);
-                    navigate(`/grupos/${g.codigo}`);
-                  }}
-                >
-                  <span className="drawer-item-name">{g.nombre}</span>
-                  <small className="drawer-item-code">{g.codigo}</small>
-                </button>
-              ))}
-              {gruposUsuario.length === 0 && <div className="label">Sin grupos</div>}
+              {tieneSesion ? (
+                <>
+                  {gruposUsuario.map(g => (
+                    <button
+                      key={g.id}
+                      className="drawer-item drawer-item-color"
+                      style={{
+                        "--drawer-a": obtenerColorGrupo(g.codigo || g.nombre || "").a,
+                        "--drawer-b": obtenerColorGrupo(g.codigo || g.nombre || "").b
+                      }}
+                      onClick={() => {
+                        setMenuAbierto(false);
+                        navigate(`/grupos/${g.codigo}`);
+                      }}
+                    >
+                      <span className="drawer-item-name">{g.nombre}</span>
+                      <small className="drawer-item-code">{g.codigo}</small>
+                    </button>
+                  ))}
+                  {gruposUsuario.length === 0 && <div className="label">Sin grupos</div>}
+                </>
+              ) : (
+                <div className="label">Inicia sesión para ver tus grupos.</div>
+              )}
             </div>
           </div>
 
           <div className="home-drawer-section">
             <div className="label">Mi horario</div>
-            {horarioDrawer.length === 0 ? (
-              <div className="drawer-horario">Sin horario</div>
-            ) : (
-              <div className="drawer-horario-list">
-                {horarioDrawer.map((b, idx) => (
-                  <div key={`${b.id}-${idx}`} className="drawer-horario-item">
-                    <div className="drawer-horario-top">
-                      <span className="drawer-dia-badge">{b.diaLabel}</span>
-                      <span className="drawer-hora">{b.startTime} - {b.endTime}</span>
+            {tieneSesion ? (
+              horarioDrawer.length === 0 ? (
+                <div className="drawer-horario">Sin horario</div>
+              ) : (
+                <div className="drawer-horario-list">
+                  {horarioDrawer.map((b, idx) => (
+                    <div key={`${b.id}-${idx}`} className="drawer-horario-item">
+                      <div className="drawer-horario-top">
+                        <span className="drawer-dia-badge">{b.diaLabel}</span>
+                        <span className="drawer-hora">{b.startTime} - {b.endTime}</span>
+                      </div>
+                      <div className="drawer-clase">{b.nombreClase}</div>
                     </div>
-                    <div className="drawer-clase">{b.nombreClase}</div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="drawer-horario">Disponible al iniciar sesión</div>
             )}
           </div>
         </aside>
       </>
 
-      {fabAbierto && (
+      {fabAbierto && tieneSesion && (
         <div className="footer-plus-menu">
           <button
             className="fab-menu-item"
@@ -549,6 +587,11 @@ export default function Home() {
           className="home-footer-plus"
           aria-label="Opciones de grupo"
           onClick={() => {
+            if (!tieneSesion) {
+              setError("Inicia sesión para crear o unirte a grupos.");
+              navigate("/auth");
+              return;
+            }
             setFabAbierto(v => !v);
             setAccionAbierta("");
             setMenuGrupoAbiertoId(null);
@@ -559,8 +602,8 @@ export default function Home() {
 
         <button
           className="avatar-button home-footer-avatar"
-          onClick={() => navigate("/perfil/editar")}
-          aria-label="Ir a perfil"
+          onClick={() => (tieneSesion ? navigate("/perfil/editar") : navigate("/auth"))}
+          aria-label={tieneSesion ? "Ir a perfil" : "Iniciar sesión"}
         >
           {avatarUrl ? (
             <img className="avatar-img" src={avatarUrl} alt="Perfil" />

@@ -149,6 +149,11 @@ export default function GrupoDetalle() {
   async function recargarGrupo() {
     if (!codigo) return;
     const g = await obtenerVistaPreviaPorCodigo(codigo);
+    if (g && !g.esPublico && !userId) {
+      setGrupo(null);
+      setError("Inicia sesión para ver este grupo.");
+      return;
+    }
     setGrupo(g);
     setNuevoNombreGrupo(g?.nombre || "");
     const miembro = g?.miembros?.find(m => m.user_id === userId);
@@ -466,6 +471,7 @@ export default function GrupoDetalle() {
         <div className="card">
           <strong>Grupo no encontrado</strong>
           <p>Verifique el código e intente nuevamente.</p>
+          {error && <p>{error}</p>}
           <button className="btn arrow-back" onClick={() => navigate("/grupos")} aria-label="Atrás">
             <svg
               className="arrow-back-icon"
@@ -611,49 +617,58 @@ export default function GrupoDetalle() {
 
       {tabActiva === "archivos" && (
         <div className="group-tab-content">
-          <div className="card repo-card" style={{ maxWidth: "none" }}>
-            <strong className="repo-title">Subir archivos</strong>
-            <p className="label repo-subtitle">PDF, DOCX, PNG (Máx. 20MB)</p>
+          {!userId ? (
+            <div className="card" style={{ maxWidth: "none" }}>
+              <strong>Subir archivos</strong>
+              <p className="label" style={{ marginBottom: 0 }}>
+                Inicia sesión para subir archivos al repositorio del grupo.
+              </p>
+            </div>
+          ) : (
+            <div className="card repo-card" style={{ maxWidth: "none" }}>
+              <strong className="repo-title">Subir archivos</strong>
+              <p className="label repo-subtitle">PDF, DOCX, PNG (Máx. 20MB)</p>
 
-            <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
-              <div className="drop-content">
-                <p className="repo-hint">
-                  {archivosSeleccionados.length > 0
-                    ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
-                    : "Arrastra archivos aquí o haz click para seleccionar"}
-                </p>
-                <small className="label">PDF, DOCX, PNG hasta 20MB</small>
+              <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
+                <div className="drop-content">
+                  <p className="repo-hint">
+                    {archivosSeleccionados.length > 0
+                      ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
+                      : "Arrastra archivos aquí o haz click para seleccionar"}
+                  </p>
+                  <small className="label">PDF, DOCX, PNG hasta 20MB</small>
+                </div>
               </div>
+
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                accept=".pdf,.png,.docx"
+                style={{ display: "none" }}
+                onChange={e => manejarArchivos(e.target.files)}
+              />
+
+              {archivosSeleccionados.length > 0 && (
+                <ul className="repo-files">
+                  {archivosSeleccionados.map((file, idx) => (
+                    <li key={idx} className="label repo-file">
+                      {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="repo-actions">
+                <button className="btn btnPrimary" onClick={subirArchivos} disabled={subiendo}>
+                  {subiendo ? "Subiendo..." : "Subir al repositorio"}
+                </button>
+                <button className="btn" onClick={listarArchivos}>Refrescar archivos</button>
+              </div>
+
+              {mensajeSubida && <p className="repo-message">{mensajeSubida}</p>}
             </div>
-
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              accept=".pdf,.png,.docx"
-              style={{ display: "none" }}
-              onChange={e => manejarArchivos(e.target.files)}
-            />
-
-            {archivosSeleccionados.length > 0 && (
-              <ul className="repo-files">
-                {archivosSeleccionados.map((file, idx) => (
-                  <li key={idx} className="label repo-file">
-                    {file.name} ({(file.size / 1024 / 1024).toFixed(2)} MB)
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <div className="repo-actions">
-              <button className="btn btnPrimary" onClick={subirArchivos} disabled={subiendo}>
-                {subiendo ? "Subiendo..." : "Subir al repositorio"}
-              </button>
-              <button className="btn" onClick={listarArchivos}>Refrescar archivos</button>
-            </div>
-
-            {mensajeSubida && <p className="repo-message">{mensajeSubida}</p>}
-          </div>
+          )}
 
           <div className="archivos-grid">
             {archivosSubidos.map((file, idx) => {

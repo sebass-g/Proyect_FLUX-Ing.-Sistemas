@@ -97,19 +97,13 @@ export default function App() {
       <Route
         path="/grupos"
         element={
-          <RequireAuth session={session} loading={loadingSession}>
-            {/* Home: crear/unirse a grupos */}
-            <Home />
-          </RequireAuth>
+          <Home />
         }
       />
       <Route
         path="/grupos/:codigo"
         element={
-          <RequireAuth session={session} loading={loadingSession}>
-            {/* Detalle de un grupo específico */}
-            <GrupoDetalle />
-          </RequireAuth>
+          <GrupoDetalle />
         }
       />
       <Route
@@ -124,17 +118,13 @@ export default function App() {
       <Route
         path="/repos/:codigo"
         element={
-          <RequireAuth session={session} loading={loadingSession}>
-            <DetallesRepositorio />
-          </RequireAuth>
+          <DetallesRepositorio />
         }
       />
       <Route
         path="/repos-publicos/:id"
         element={
-          <RequireAuth session={session} loading={loadingSession}>
-            <RepositorioPublicoDetalle />
-          </RequireAuth>
+          <RepositorioPublicoDetalle />
         }
       />
       {/* Redirecciones por defecto */}
