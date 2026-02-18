@@ -138,6 +138,7 @@ export default function Home() {
           setHorario([]);
           setGruposUsuario([]);
           setTieneSesion(false);
+          setError("");
         }
         return;
       }
@@ -588,8 +589,7 @@ export default function Home() {
           aria-label="Opciones de grupo"
           onClick={() => {
             if (!tieneSesion) {
-              setError("Inicia sesión para crear o unirte a grupos.");
-              navigate("/auth");
+              setError("Inicia sesión para acceder a grupos privados.");
               return;
             }
             setFabAbierto(v => !v);

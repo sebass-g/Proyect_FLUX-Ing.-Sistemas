@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../config/supabaseClient' 
 import '../estilos/flux.css' 
 
 function Registro() {
+  const navigate = useNavigate()
   const [esLogin, setEsLogin] = useState(true)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -324,6 +326,15 @@ function Registro() {
           }}
         >
           {esLogin ? 'Crear Usuario Nuevo' : 'Iniciar Sesión'}
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          style={{ marginTop: '12px' }}
+          onClick={() => navigate('/grupos')}
+        >
+          Volver al Home
         </button>
 
         {/* Alertas / Notificaciones */}
