@@ -20,6 +20,7 @@ export default function GrupoDetalle() {
   const [grupo, setGrupo] = useState(null);
   const [cargandoGrupo, setCargandoGrupo] = useState(true);
   const [userId, setUserId] = useState(null);
+  const [sesionCargada, setSesionCargada] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [esAdmin, setEsAdmin] = useState(false);
@@ -152,24 +153,25 @@ export default function GrupoDetalle() {
     if (g && !g.esPublico && !userId) {
       setGrupo(null);
       setError("Inicia sesión para ver este grupo.");
-      return;
+      return null;
     }
     setGrupo(g);
     setNuevoNombreGrupo(g?.nombre || "");
     const miembro = g?.miembros?.find(m => m.user_id === userId);
     setEsAdmin(Boolean(miembro?.is_admin));
+    return g || null;
   }
 
-  async function listarArchivos() {
+  async function listarArchivos(grupoId = grupo?.id) {
     try {
-      if (!grupo?.id) {
+      if (!grupoId) {
         setArchivosSubidos([]);
         return;
       }
       const { data, error: listError } = await supabase
         .from("grupo_archivos")
         .select("path, nombre, created_at")
-        .eq("grupo_id", grupo.id)
+        .eq("grupo_id", grupoId)
         .order("created_at", { ascending: false });
       if (listError) throw listError;
       setArchivosSubidos(data || []);
@@ -186,27 +188,30 @@ export default function GrupoDetalle() {
       } = await supabase.auth.getSession();
       if (sessionError) {
         setError("No se pudo leer la sesión.");
+        setSesionCargada(true);
         return;
       }
       setUserId(session?.user?.id || null);
       setAvatarUrl(session?.user?.user_metadata?.avatar_url?.trim() || "");
       setDisplayName(session?.user?.user_metadata?.display_name?.trim() || "");
+      setSesionCargada(true);
     })();
   }, []);
 
   useEffect(() => {
     (async () => {
+      if (!sesionCargada) return;
       if (!codigo) {
         setGrupo(null);
         setCargandoGrupo(false);
         return;
       }
       setCargandoGrupo(true);
-      await recargarGrupo();
-      await listarArchivos();
+      const grupoActual = await recargarGrupo();
+      await listarArchivos(grupoActual?.id || null);
       setCargandoGrupo(false);
     })();
-  }, [codigo, userId]);
+  }, [codigo, userId, sesionCargada]);
 
   const manejarArchivos = files => {
     const archivosValidos = Array.from(files).filter(file => {
