@@ -107,9 +107,9 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [busquedaAbierta, busquedaTexto, filtroFechaRepos]);
 
-  async function cargarGrupos() {
+  async function cargarGrupos(userIdActual = userId) {
     try {
-      if (!userId) {
+      if (!userIdActual) {
         setGruposUsuario([]);
         return;
       }
@@ -169,7 +169,7 @@ export default function Home() {
         );
       }
 
-      await cargarGrupos();
+      await cargarGrupos(user?.id || null);
     }
 
     cargarContexto();
