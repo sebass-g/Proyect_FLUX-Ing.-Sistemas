@@ -465,6 +465,31 @@ export default function GrupoDetalle() {
     );
   }
 
+  if (!userId) {
+    const gruposEjemplo = [
+      { nombre: "Grupo de Matemáticas", codigo: "MAT123" },
+      { nombre: "Grupo de Física", codigo: "FIS456" },
+      { nombre: "Grupo de Química", codigo: "QUI789" }
+    ];
+
+    return (
+      <div className="container">
+        <div className="card">
+          <strong>Explora grupos de ejemplo</strong>
+          <p>Inicia sesión para unirte a un grupo.</p>
+          <ul className="example-groups">
+            {gruposEjemplo.map((g, index) => (
+              <li key={index} className="example-group" onClick={() => navigate("/login")}> 
+                <div className="group-name">{g.nombre}</div>
+                <div className="group-code">Código: {g.codigo}</div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    );
+  }
+
   if (!grupo) {
     return (
       <div className="container">
@@ -828,3 +853,4 @@ export default function GrupoDetalle() {
     </div>
   );
 }
+ 

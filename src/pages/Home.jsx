@@ -451,16 +451,63 @@ export default function Home() {
 
       {gruposUsuario.length === 0 && (
         <div className="card" style={{ marginTop: 16 }}>
-          <div className="label" style={{ marginBottom: 0 }}>
-            {tieneSesion
-              ? "Aún no perteneces a ningún grupo. Usa el botón + para crear o unirte."
-              : "Explora repositorios y grupos públicos desde el buscador. Inicia sesión para crear o unirte a grupos."}
-          </div>
-          {!tieneSesion && (
-            <button className="btn" style={{ marginTop: 12 }} onClick={() => navigate("/auth")}
-            >
-              Iniciar sesión
-            </button>
+          {tieneSesion ? (
+            <div className="label" style={{ marginBottom: 0 }}>
+              Aún no perteneces a ningún grupo. Usa el botón + para crear o unirte.
+            </div>
+          ) : (
+            <div>
+              <div className="label" style={{ marginBottom: 8 }}>
+                Explora grupos. Inicia sesión para unirte o crear grupos.
+              </div>
+              {(() => {
+                const gruposEjemplo = [
+                  { nombre: "Grupo de Matemáticas", codigo: "MAT123" },
+                  { nombre: "Grupo de Física", codigo: "FIS456" },
+                  { nombre: "Grupo de Química", codigo: "QUI789" }
+                ];
+
+                return (
+                  <div className="classroom-grid" style={{ marginTop: 8 }}>
+                    {gruposEjemplo.map((g, i) => {
+                      const iniciales = (g.nombre || "G")
+                        .split(" ")
+                        .map(p => p[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase();
+                      const color = obtenerColorGrupo(g.codigo || g.nombre || "");
+                      return (
+                        <button
+                          key={i}
+                          className="classroom-card"
+                          onClick={() => navigate("/auth")}
+                          style={{ cursor: "pointer" }}
+                        >
+                          <div
+                            className="classroom-card-banner"
+                            style={{ "--banner-a": color.a, "--banner-b": color.b }}
+                          >
+                            <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>
+                              {iniciales}
+                            </div>
+                          </div>
+                          <div className="classroom-card-body">
+                            <div className="classroom-card-title">{g.nombre}</div>
+                            <div className="label classroom-card-code">Código: {g.codigo}</div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              <div style={{ marginTop: 10 }}>
+                <button className="btn" onClick={() => navigate("/auth")}>
+                  Iniciar sesión
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}
