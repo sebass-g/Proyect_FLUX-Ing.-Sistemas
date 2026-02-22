@@ -143,6 +143,8 @@ export default function Home() {
     }
   }
 
+  
+
   useEffect(() => {
     let isMounted = true;
 
@@ -999,6 +1001,7 @@ export default function Home() {
                         <small className="repo-suggest-meta">
                           Creado: {repo.createdAt ? new Date(repo.createdAt).toLocaleDateString() : "-"}
                         </small>
+                        {/* Favoritar desde resultados requiere entrar al repositorio */}
                       </>
                     )}
                   </button>

@@ -1469,6 +1469,25 @@ select.input {
   background: var(--badge-bg, rgba(0, 0, 0, 0.3));
 }
 
+/* Favorito pequeño usado en banners */
+.classroom-card-fav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.92);
+  color: var(--texto);
+  font-weight: 700;
+  border: 1px solid rgba(37,52,63,0.12);
+  cursor: pointer;
+  box-shadow: var(--sombra);
+}
+.classroom-card-fav:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--sombra-hover);
+}
+
 .classroom-card-body {
   padding: var(--space-4);
 }
