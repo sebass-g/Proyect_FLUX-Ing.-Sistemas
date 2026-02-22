@@ -6,6 +6,7 @@ import {
   listarArchivosRepositorioPublico,
   obtenerRepositorioPublicoPorId,
   subirArchivoRepositorioPublico
+  , toggleFavoritoRepositorio, isRepositorioFavorito
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import "../estilos/flux.css";
@@ -15,7 +16,10 @@ export default function RepositorioPublicoDetalle() {
   const navigate = useNavigate();
   const [repo, setRepo] = useState(null);
   const [archivos, setArchivos] = useState([]);
+  const [isFavorito, setIsFavorito] = useState(false);
+  const [actividad, setActividad] = useState([]);
   const [archivosSeleccionados, setArchivosSeleccionados] = useState([]);
+  const [nuevoAnuncio, setNuevoAnuncio] = useState("");
   const [subiendo, setSubiendo] = useState(false);
   const [mensaje, setMensaje] = useState("");
   const [esCreador, setEsCreador] = useState(false);
@@ -45,6 +49,13 @@ export default function RepositorioPublicoDetalle() {
         const uid = session?.user?.id || null;
         setEsCreador(Boolean(uid && data?.creador_id && uid === data.creador_id));
         await cargarArchivos(data?.id);
+        try {
+          const fav = await isRepositorioFavorito(data?.id);
+          setIsFavorito(Boolean(fav));
+        } catch (e) {
+          console.warn("Error checking favorite:", e.message);
+        }
+        await cargarActividad(data?.id);
       } catch (e) {
         setError(e.message);
         setRepo(null);
@@ -54,6 +65,49 @@ export default function RepositorioPublicoDetalle() {
       }
     })();
   }, [id]);
+
+  async function cargarActividad(repoId) {
+    if (!repoId) {
+      setActividad([]);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from("repositorio_publico_actividad")
+        .select("mensaje, fecha, actor_id")
+        .eq("repositorio_id", repoId)
+        .order("fecha", { ascending: false });
+      if (error) throw error;
+      setActividad(data || []);
+    } catch (e) {
+      // no bloquear la vista si no existe la tabla; mostrar vacío
+      console.warn("No se pudo cargar actividad de repositorio:", e.message);
+      setActividad([]);
+    }
+  }
+
+  async function publicarAnuncio() {
+    if (!repo?.id) return;
+    if (!esCreador) return setMensaje("Solo el creador puede publicar anuncios.");
+    if (!nuevoAnuncio.trim()) return setMensaje("Escribe un anuncio antes de publicar.");
+
+    try {
+      const {
+        data: { session }
+      } = await supabase.auth.getSession();
+      const uid = session?.user?.id || null;
+      const { error } = await supabase.from("repositorio_publico_actividad").insert({
+        repositorio_id: repo.id,
+        actor_id: uid,
+        mensaje: `ANUNCIO::${nuevoAnuncio.trim()}`
+      });
+      if (error) throw error;
+      setNuevoAnuncio("");
+      await cargarActividad(repo.id);
+    } catch (e) {
+      setMensaje(`Error al publicar anuncio: ${e.message}`);
+    }
+  }
 
   const manejarArchivos = files => {
     const archivosValidos = Array.from(files || []).filter(file => file.size <= 20 * 1024 * 1024);
@@ -103,6 +157,17 @@ export default function RepositorioPublicoDetalle() {
     }
   }
 
+  async function manejarToggleFavorito() {
+    if (!repo?.id) return;
+    try {
+      const res = await toggleFavoritoRepositorio(repo.id);
+      setIsFavorito(Boolean(res?.favorito));
+      setMensaje(res?.favorito ? "Añadido a favoritos" : "Eliminado de favoritos");
+    } catch (e) {
+      setMensaje(`Error al cambiar favorito: ${e.message}`);
+    }
+  }
+
   async function manejarEliminarRepositorio() {
     if (!repo?.id || !esCreador) return;
     const ok = window.confirm("¿Eliminar este repositorio público? Esta acción no se puede deshacer.");
@@ -139,66 +204,142 @@ export default function RepositorioPublicoDetalle() {
 
   return (
     <div className="container">
-      <div style={{ marginBottom: 12 }}>
-        <button className="btn" onClick={() => navigate("/grupos")}>
-          Volver al menú
+      <div
+        className="group-banner"
+        style={{ "--banner-a": "#6c757d", "--banner-b": "#343a40" }}
+      >
+        <div className="group-banner-content group-banner-single">
+          <button
+            className="btn arrow-back group-back-btn"
+            onClick={() => navigate("/grupos")}
+            aria-label="Atrás"
+          >
+            <svg
+              className="arrow-back-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path d="M15 6L9 12L15 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          <div className="group-banner-main">
+            <div className="group-banner-title">{repo.titulo}</div>
+            <div className="group-banner-subtitle">Repositorio público · {repo.creador_nombre || "Usuario"}</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className="btn" onClick={manejarToggleFavorito} title={isFavorito ? "Quitar favorito" : "Agregar a favoritos"}>
+              {isFavorito ? "★ Favorito" : "☆ Favorito"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="group-tabs">
+        <button className={`group-tab ${"info" === "info" ? "active" : ""}`} onClick={() => {}}>
+          Info
+        </button>
+        <button className={`group-tab ${"archivos" === "archivos" ? "active" : ""}`} onClick={() => {}}>
+          Archivos
         </button>
       </div>
 
-      <div className="card">
-        <strong>{repo.titulo}</strong>
-        <div className="label" style={{ marginTop: 8 }}>
-          Creador: {repo.creador_nombre || "Usuario"}
+      <div className="group-tab-content" style={{ marginTop: 8 }}>
+        <div className="card">
+          <strong>{repo.titulo}</strong>
+          <div className="label" style={{ marginTop: 8 }}>
+            Creador: {repo.creador_nombre || "Usuario"}
+          </div>
+          <div className="label">
+            Fecha de creación: {repo.created_at ? new Date(repo.created_at).toLocaleDateString() : "-"}
+          </div>
+          <div className="label" style={{ marginBottom: 0 }}>
+            Este repositorio es público y no está vinculado a un grupo.
+          </div>
+          {esCreador && (
+            <div style={{ marginTop: 12 }}>
+              <button className="btn" onClick={manejarEliminarRepositorio}>
+                Eliminar repositorio
+              </button>
+            </div>
+          )}
         </div>
-        <div className="label">
-          Fecha de creación: {repo.created_at ? new Date(repo.created_at).toLocaleDateString() : "-"}
-        </div>
-        <div className="label" style={{ marginBottom: 0 }}>
-          Este repositorio es público y no está vinculado a un grupo.
-        </div>
+
         {esCreador && (
-          <div style={{ marginTop: 12 }}>
-            <button className="btn" onClick={manejarEliminarRepositorio}>
-              Eliminar repositorio
-            </button>
+          <div className="card repo-card" style={{ maxWidth: "none", marginTop: 12 }}>
+            <strong className="repo-title">Subir archivos</strong>
+            <p className="label repo-subtitle">Máximo 20MB por archivo</p>
+
+            <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
+              <div className="drop-content">
+                <p className="repo-hint">
+                  {archivosSeleccionados.length > 0
+                    ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
+                    : "Arrastra archivos aquí o haz click para seleccionar"}
+                </p>
+              </div>
+            </div>
+
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              style={{ display: "none" }}
+              onChange={e => manejarArchivos(e.target.files)}
+            />
+
+            <div className="repo-actions">
+              <button className="btn btnPrimary" onClick={manejarSubirArchivos} disabled={subiendo}>
+                {subiendo ? "Subiendo..." : "Subir al repositorio"}
+              </button>
+            </div>
+            {mensaje && <p className="repo-message">{mensaje}</p>}
           </div>
         )}
-      </div>
 
-      {esCreador && (
-        <div className="card repo-card" style={{ maxWidth: "none", marginTop: 12 }}>
-          <strong className="repo-title">Subir archivos</strong>
-          <p className="label repo-subtitle">Máximo 20MB por archivo</p>
+        <div style={{ marginTop: 12 }}>
+          <div className="card">
+            <strong>Anuncios</strong>
+            {esCreador && (
+              <div style={{ marginTop: 8 }}>
+                <textarea
+                  className="input"
+                  rows={3}
+                  value={nuevoAnuncio}
+                  onChange={e => setNuevoAnuncio(e.target.value)}
+                  placeholder="Escribe un anuncio para este repositorio público..."
+                />
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btnPrimary" onClick={publicarAnuncio}>Publicar anuncio</button>
+                </div>
+              </div>
+            )}
 
-          <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
-            <div className="drop-content">
-              <p className="repo-hint">
-                {archivosSeleccionados.length > 0
-                  ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
-                  : "Arrastra archivos aquí o haz click para seleccionar"}
-              </p>
+            <div style={{ marginTop: 12 }}>
+              {actividad.length === 0 ? (
+                <div className="label">Aún no hay anuncios.</div>
+              ) : (
+                actividad.map((a, i) => (
+                  <div key={`${a.fecha}-${i}`} className="feed-card" style={{ marginBottom: 8 }}>
+                    <div className="feed-card-header">
+                      <div className="feed-avatar">{(a.actor_id || "U").slice(0,1).toUpperCase()}</div>
+                      <div>
+                        <div className="feed-author">Anuncio</div>
+                        <div className="feed-date">{a.fecha ? new Date(a.fecha).toLocaleString() : ""}</div>
+                      </div>
+                    </div>
+                    <div className="feed-text">{`${a.mensaje || ""}`.replace(/^ANUNCIO::/, "")}</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
-
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            style={{ display: "none" }}
-            onChange={e => manejarArchivos(e.target.files)}
-          />
-
-          <div className="repo-actions">
-            <button className="btn btnPrimary" onClick={manejarSubirArchivos} disabled={subiendo}>
-              {subiendo ? "Subiendo..." : "Subir al repositorio"}
-            </button>
-          </div>
-          {mensaje && <p className="repo-message">{mensaje}</p>}
         </div>
-      )}
 
-      <div className="group-tab-content">
-        <div className="archivos-grid">
+        <div className="archivos-grid" style={{ marginTop: 12 }}>
           {archivos.map((file, idx) => {
             const fullPath = file.path;
             const { data } = supabase.storage.from("Flux_repositorioGrupos").getPublicUrl(fullPath);
