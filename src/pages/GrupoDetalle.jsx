@@ -12,6 +12,14 @@ import {
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorGrupo } from "../utils/groupColors";
 import "../estilos/flux.css";
+import TaskMaster from "./TaskMaster";
+import {
+  listarTareasGrupo,
+  crearTareaGrupo,
+  toggleTareaGrupo,
+  editarTareaGrupo,
+  eliminarTareaGrupo
+} from "../servicios/grupos.api";
 
 export default function GrupoDetalle() {
   const { codigo } = useParams();
@@ -26,6 +34,7 @@ export default function GrupoDetalle() {
   const [esAdmin, setEsAdmin] = useState(false);
 
   const [tabActiva, setTabActiva] = useState("stream");
+  const [tareas, setTareas] = useState([]);
   const [nuevoNombreGrupo, setNuevoNombreGrupo] = useState("");
   const [nuevoAnuncio, setNuevoAnuncio] = useState("");
   const [guardandoVisibilidad, setGuardandoVisibilidad] = useState(false);
@@ -55,6 +64,70 @@ export default function GrupoDetalle() {
     { value: 6, label: "Sab" },
     { value: 0, label: "Dom" }
   ];
+
+  const cargarTareas = async (idGrupo) => {
+    if (!idGrupo) return;
+    try {
+      const data = await listarTareasGrupo(idGrupo);
+      setTareas(data || []);
+    } catch (error) {
+      console.error("Error cargando tareas:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (grupo?.id) {
+      cargarTareas(grupo.id);
+    }
+  }, [grupo?.id]);
+
+  // --- HANDLERS DE TAREAS ---
+
+  const handleAgregarTarea = async (texto) => {
+    try {
+        // Asumiendo que crearTareaGrupo devuelve la tarea creada con su ID de base de datos
+        const nuevaTarea = await crearTareaGrupo({ grupoId: grupo.id, titulo: texto });
+        setTareas([...tareas, nuevaTarea]);
+    } catch (error) {
+        console.error("Error al agregar tarea:", error);
+    }
+  };
+
+  const handleToggleTarea = async (tareaId, completada) => {
+    try {
+      setTareas(tareas.map(t => t.id === tareaId ? { ...t, completada } : t));
+      await toggleTareaGrupo({ tareaId, completada });
+    } catch (error) {
+      console.error("Error actualizando tarea:", error);
+      cargarTareas(grupo.id); 
+    }
+  };
+
+  // CORRECCIÓN: Se fusionaron las dos declaraciones en una sola
+  const handleEditarTarea = async (tareaId, nuevoTitulo) => {
+    try {
+      // 1. Actualización optimista en la UI
+      setTareas(tareas.map(t => t.id === tareaId ? { ...t, titulo: nuevoTitulo } : t));
+      
+      // 2. Llamada a la API
+      await editarTareaGrupo({ tareaId, titulo: nuevoTitulo });
+    } catch (error) {
+      console.error("Error editando tarea:", error);
+      // Opcional: recargar tareas si hay error para revertir UI
+      cargarTareas(grupo.id);
+    }
+  };
+
+  const handleBorrarTarea = async (tareaId) => {
+    try {
+      await eliminarTareaGrupo({ tareaId });
+      setTareas(tareas.filter(t => t.id !== tareaId));
+    } catch (error) {
+      console.error("Error borrando tarea:", error);
+    }
+  };
+
+  // --- FIN HANDLERS TAREAS ---
 
   const puedePublicarAnuncio = useMemo(
     () => Boolean(userId && grupo?.creadorId && userId === grupo.creadorId),
@@ -525,6 +598,7 @@ export default function GrupoDetalle() {
   }
 
   const colorGrupo = obtenerColorGrupo(grupo.codigo || grupo.nombre || "");
+  
   return (
     <div className="container">
       <div
@@ -580,6 +654,7 @@ export default function GrupoDetalle() {
         <button className={`group-tab ${tabActiva === "stream" ? "active" : ""}`} onClick={() => setTabActiva("stream")}>Stream</button>
         <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
         <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
+        <button className={`group-tab ${tabActiva === "tareas" ? "active" : ""}`} onClick={() => setTabActiva("tareas")}>Tareas</button>
       </div>
 
       {tabActiva === "stream" && (
@@ -765,6 +840,21 @@ export default function GrupoDetalle() {
         </div>
       )}
 
+      {tabActiva === "tareas" && (
+        <div className="group-tab-content">
+          <TaskMaster
+          esAdmin={esAdmin}
+          tareas={tareas}
+          // CORRECCIÓN: 'miembros' no estaba definido, se usa el estado del grupo
+          totalMiembros={grupo?.miembros?.length || 0} 
+          onAgregarTarea={handleAgregarTarea}
+          onToggleTarea={handleToggleTarea}
+          onEditarTarea={handleEditarTarea} 
+          onBorrarTarea={handleBorrarTarea}
+        />
+        </div>
+      )}
+
       {mostrarPerfil && (
         <div className="modal-overlay" onClick={() => setMostrarPerfil(false)}>
           <div className="modal-content member-modal" onClick={e => e.stopPropagation()}>
@@ -858,4 +948,3 @@ export default function GrupoDetalle() {
     </div>
   );
 }
- 
