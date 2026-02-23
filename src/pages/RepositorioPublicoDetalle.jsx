@@ -4,10 +4,14 @@ import {
   eliminarRepositorioPublico,
   eliminarArchivoRepositorioPublico,
   guardarCalificacionRepositorioPublico,
+  agregarColaboradorPorEmail,
+  eliminarColaboradorRepositorioPublico,
   listarArchivosRepositorioPublico,
+  listarColaboradoresRepositorioPublico,
   obtenerMiCalificacionRepositorioPublico,
   obtenerPromedioRepositorioPublico,
   obtenerRepositorioPublicoPorId,
+  salirRepositorioPublico,
   subirArchivoRepositorioPublico,
   toggleFavoritoRepositorio,
   isRepositorioFavorito
@@ -26,7 +30,11 @@ export default function RepositorioPublicoDetalle() {
   const [nuevoAnuncio, setNuevoAnuncio] = useState("");
   const [subiendo, setSubiendo] = useState(false);
   const [mensaje, setMensaje] = useState("");
+  const [mensajeColaboradores, setMensajeColaboradores] = useState("");
   const [esCreador, setEsCreador] = useState(false);
+  const [esColaborador, setEsColaborador] = useState(false);
+  const [colaboradores, setColaboradores] = useState([]);
+  const [emailColaborador, setEmailColaborador] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [userId, setUserId] = useState(null);
@@ -35,6 +43,8 @@ export default function RepositorioPublicoDetalle() {
   const [miRating, setMiRating] = useState("");
   const [guardandoRating, setGuardandoRating] = useState(false);
   const inputRef = useRef(null);
+  const esEditor = esCreador || esColaborador;
+  const [tabActiva, setTabActiva] = useState("info");
 
   async function cargarArchivos(repoId) {
     if (!repoId) {
@@ -61,6 +71,32 @@ export default function RepositorioPublicoDetalle() {
     setMiRating(miCalificacion ? String(miCalificacion) : "");
   }
 
+  async function cargarColaboradores(repoId, uid) {
+    if (!repoId) {
+      setColaboradores([]);
+      setEsColaborador(false);
+      return;
+    }
+    if (!uid) {
+      setColaboradores([]);
+      setEsColaborador(false);
+      return;
+    }
+    try {
+      const data = await listarColaboradoresRepositorioPublico({ repositorioId: repoId });
+      setColaboradores(data);
+      if (uid) {
+        setEsColaborador(data.some(c => c.user_id === uid));
+      } else {
+        setEsColaborador(false);
+      }
+    } catch (e) {
+      console.warn("No se pudieron cargar colaboradores:", e.message);
+      setColaboradores([]);
+      setEsColaborador(false);
+    }
+  }
+
   useEffect(() => {
     (async () => {
       setCargando(true);
@@ -76,6 +112,7 @@ export default function RepositorioPublicoDetalle() {
         setEsCreador(Boolean(uid && data?.creador_id && uid === data.creador_id));
         await cargarArchivos(data?.id);
         await cargarRatings(data?.id);
+        await cargarColaboradores(data?.id, uid);
         try {
           const fav = await isRepositorioFavorito(data?.id);
           setIsFavorito(Boolean(fav));
@@ -150,7 +187,7 @@ export default function RepositorioPublicoDetalle() {
 
   async function manejarSubirArchivos() {
     if (!repo?.id) return;
-    if (!esCreador) return setMensaje("Solo el creador puede subir archivos.");
+    if (!esEditor) return setMensaje("Solo el creador o colaboradores pueden subir archivos.");
     if (!archivosSeleccionados.length) return setMensaje("Selecciona archivos primero.");
 
     setSubiendo(true);
@@ -171,7 +208,7 @@ export default function RepositorioPublicoDetalle() {
 
   async function manejarEliminarArchivo(archivo) {
     if (!repo?.id || !archivo?.id) return;
-    if (!esCreador) return setMensaje("Solo el creador puede eliminar archivos.");
+    if (!esEditor) return setMensaje("Solo el creador o colaboradores pueden eliminar archivos.");
     try {
       await eliminarArchivoRepositorioPublico({
         repositorioId: repo.id,
@@ -181,6 +218,47 @@ export default function RepositorioPublicoDetalle() {
       await cargarArchivos(repo.id);
     } catch (e) {
       setMensaje(`Error al eliminar: ${e.message}`);
+    }
+  }
+
+  async function manejarAgregarColaborador() {
+    if (!repo?.id) return;
+    if (!esCreador) return;
+    const correo = emailColaborador.trim();
+    if (!correo) return setMensajeColaboradores("Ingresa un correo válido.");
+    try {
+      await agregarColaboradorPorEmail({ repositorioId: repo.id, email: correo });
+      setEmailColaborador("");
+      await cargarColaboradores(repo.id, userId);
+      setMensajeColaboradores("Colaborador agregado.");
+    } catch (e) {
+      setMensajeColaboradores(`Error al agregar colaborador: ${e.message}`);
+    }
+  }
+
+  async function manejarEliminarColaborador(colaborador) {
+    if (!repo?.id || !colaborador?.user_id) return;
+    if (!esCreador) return;
+    try {
+      await eliminarColaboradorRepositorioPublico({
+        repositorioId: repo.id,
+        userId: colaborador.user_id
+      });
+      await cargarColaboradores(repo.id, userId);
+      setMensajeColaboradores("Colaborador eliminado.");
+    } catch (e) {
+      setMensajeColaboradores(`Error al eliminar colaborador: ${e.message}`);
+    }
+  }
+
+  async function manejarSalirColaborador() {
+    if (!repo?.id) return;
+    try {
+      await salirRepositorioPublico({ repositorioId: repo.id });
+      await cargarColaboradores(repo.id, userId);
+      setMensajeColaboradores("Has salido del repositorio.");
+    } catch (e) {
+      setMensajeColaboradores(`Error al salir: ${e.message}`);
     }
   }
 
@@ -290,15 +368,19 @@ export default function RepositorioPublicoDetalle() {
       </div>
 
       <div className="group-tabs">
-        <button className={`group-tab ${"info" === "info" ? "active" : ""}`} onClick={() => {}}>
+        <button className={`group-tab ${tabActiva === "info" ? "active" : ""}`} onClick={() => setTabActiva("info")}>
           Info
         </button>
-        <button className={`group-tab ${"archivos" === "archivos" ? "active" : ""}`} onClick={() => {}}>
+        <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>
           Archivos
+        </button>
+        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>
+          Personas
         </button>
       </div>
 
-      <div className="group-tab-content" style={{ marginTop: 8 }}>
+      {tabActiva === "info" && (
+        <div className="group-tab-content" style={{ marginTop: 8 }}>
         <div className="card">
           <strong>{repo.titulo}</strong>
           <div className="label" style={{ marginTop: 8 }}>
@@ -345,37 +427,6 @@ export default function RepositorioPublicoDetalle() {
             </div>
           )}
         </div>
-        {esCreador && (
-          <div className="card repo-card" style={{ maxWidth: "none", marginTop: 12 }}>
-            <strong className="repo-title">Subir archivos</strong>
-            <p className="label repo-subtitle">Máximo 20MB por archivo</p>
-
-            <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
-              <div className="drop-content">
-                <p className="repo-hint">
-                  {archivosSeleccionados.length > 0
-                    ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
-                    : "Arrastra archivos aquí o haz click para seleccionar"}
-                </p>
-              </div>
-            </div>
-
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              style={{ display: "none" }}
-              onChange={e => manejarArchivos(e.target.files)}
-            />
-
-            <div className="repo-actions">
-              <button className="btn btnPrimary" onClick={manejarSubirArchivos} disabled={subiendo}>
-                {subiendo ? "Subiendo..." : "Subir al repositorio"}
-              </button>
-            </div>
-            {mensaje && <p className="repo-message">{mensaje}</p>}
-          </div>
-        )}
 
         <div style={{ marginTop: 12 }}>
           <div className="card">
@@ -415,6 +466,42 @@ export default function RepositorioPublicoDetalle() {
             </div>
           </div>
         </div>
+        </div>
+      )}
+
+      {tabActiva === "archivos" && (
+        <div className="group-tab-content" style={{ marginTop: 8 }}>
+          {esEditor && (
+            <div className="card repo-card" style={{ maxWidth: "none", marginTop: 12 }}>
+              <strong className="repo-title">Subir archivos</strong>
+              <p className="label repo-subtitle">Máximo 20MB por archivo</p>
+
+              <div className="drop-area" onClick={() => inputRef.current?.click()} onDrop={manejarDrop} onDragOver={manejarDragOver}>
+                <div className="drop-content">
+                  <p className="repo-hint">
+                    {archivosSeleccionados.length > 0
+                      ? `${archivosSeleccionados.length} archivo(s) seleccionado(s)`
+                      : "Arrastra archivos aquí o haz click para seleccionar"}
+                  </p>
+                </div>
+              </div>
+
+              <input
+                ref={inputRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={e => manejarArchivos(e.target.files)}
+              />
+
+              <div className="repo-actions">
+                <button className="btn btnPrimary" onClick={manejarSubirArchivos} disabled={subiendo}>
+                  {subiendo ? "Subiendo..." : "Subir al repositorio"}
+                </button>
+              </div>
+              {mensaje && <p className="repo-message">{mensaje}</p>}
+            </div>
+          )}
 
         <div className="archivos-grid" style={{ marginTop: 12 }}>
           {archivos.map((file, idx) => {
@@ -432,7 +519,7 @@ export default function RepositorioPublicoDetalle() {
                     <div className="archivo-meta">{file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}</div>
                   </div>
                 </a>
-                {esCreador && (
+                {esEditor && (
                   <button className="btn" style={{ marginTop: 8 }} onClick={() => manejarEliminarArchivo(file)}>
                     Eliminar archivo
                   </button>
@@ -442,7 +529,71 @@ export default function RepositorioPublicoDetalle() {
           })}
           {!archivos.length && <p className="no-archivos">No hay archivos subidos aún.</p>}
         </div>
-      </div>
+        </div>
+      )}
+
+      {tabActiva === "people" && (
+        <div className="group-tab-content">
+          <div className="card">
+            <strong>Integrantes</strong>
+            {esCreador && (
+              <>
+                <label className="label" style={{ marginTop: 8 }}>Agregar por correo</label>
+                <input
+                  className="input"
+                  value={emailColaborador}
+                  onChange={e => setEmailColaborador(e.target.value)}
+                  placeholder="usuario@correo.unimet.edu.ve"
+                />
+                <div style={{ marginTop: 8 }}>
+                  <button className="btn btnPrimary" onClick={manejarAgregarColaborador}>
+                    Agregar colaborador
+                  </button>
+                </div>
+              </>
+            )}
+
+            <ul className="miembros-scroll" style={{ maxHeight: "none", marginTop: 8 }}>
+              {colaboradores.map(c => (
+                <li key={`${c.repositorio_id}-${c.user_id}`} className="member-row">
+                  <div className="member-item" style={{ cursor: "default" }}>
+                    <span className="member-item-name">{c.email || "Colaborador"}</span>
+                    <span className="member-item-hint">
+                      {c.created_at ? new Date(c.created_at).toLocaleDateString() : ""}
+                    </span>
+                  </div>
+
+                  {esCreador && (
+                    <button
+                      className="btn member-kick"
+                      onClick={() => manejarEliminarColaborador(c)}
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </li>
+              ))}
+              {colaboradores.length === 0 && (
+                <li className="label" style={{ marginTop: 8 }}>Aún no hay colaboradores.</li>
+              )}
+            </ul>
+
+            {mensajeColaboradores && (
+              <p className="repo-message" style={{ marginTop: 8 }}>
+                {mensajeColaboradores}
+              </p>
+            )}
+
+            {!esCreador && esColaborador && (
+              <div style={{ marginTop: 12 }}>
+                <button className="btn" onClick={manejarSalirColaborador}>
+                  Salir del repositorio
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

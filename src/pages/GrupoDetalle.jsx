@@ -579,7 +579,7 @@ export default function GrupoDetalle() {
       <div className="group-tabs">
         <button className={`group-tab ${tabActiva === "stream" ? "active" : ""}`} onClick={() => setTabActiva("stream")}>Stream</button>
         <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
-        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>People</button>
+        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
       </div>
 
       {tabActiva === "stream" && (

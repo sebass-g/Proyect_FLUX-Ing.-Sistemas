@@ -404,7 +404,11 @@ export async function abandonarGrupo({ grupoId }) {
   }
 }
 
-export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "all") {
+export async function buscarRepositoriosPublicos(
+  textoBusqueda,
+  filtroFecha = "all",
+  filtroRating = "all"
+) {
   const {
     data: { session },
     error: sessionError
@@ -429,7 +433,15 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
     desde.setFullYear(desde.getFullYear() - 1);
   }
 
-  if (!term && !desde) return [];
+  let minRating = null;
+  if (filtroRating !== "all") {
+    const parsed = Number(filtroRating);
+    if (Number.isFinite(parsed)) {
+      minRating = Math.min(Math.max(parsed, 1), 5);
+    }
+  }
+
+  if (!term && !desde && !minRating) return [];
 
   let queryGrupos = supabase
     .from("grupos")
@@ -550,6 +562,7 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
       const textoNormalizado = `${tituloNorm} ${creadorNorm}`.trim();
       const textoSinEspacios = textoNormalizado.replace(/\s/g, "");
       const termSinEspacios = termNorm.replace(/\s/g, "");
+      if (minRating && (Number(r.ratingPromedio) || 0) < minRating) return false;
       if (!termTokens.length) return true;
       return (
         termTokens.every(token => textoNormalizado.includes(token)) ||
@@ -693,6 +706,30 @@ async function asegurarPropietarioRepositorioPublico({ repositorioId, userId }) 
   return repo;
 }
 
+async function esColaboradorRepositorioPublico({ repositorioId, userId }) {
+  if (!repositorioId || !userId) return false;
+  const { data, error } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .select("id")
+    .eq("repositorio_id", repositorioId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+async function asegurarEditorRepositorioPublico({ repositorioId, userId }) {
+  const repo = await asegurarPropietarioRepositorioPublico({ repositorioId, userId }).catch(
+    () => null
+  );
+  if (repo) return repo;
+  const ok = await esColaboradorRepositorioPublico({ repositorioId, userId });
+  if (!ok) {
+    throw new Error("Solo el creador o colaboradores pueden modificar este repositorio.");
+  }
+  return { id: repositorioId, creador_id: null };
+}
+
 export async function listarArchivosRepositorioPublico({ repositorioId }) {
   const repoId = `${repositorioId || ""}`.trim();
   if (!repoId) return [];
@@ -716,7 +753,7 @@ export async function subirArchivoRepositorioPublico({ repositorioId, archivo })
   const user = session?.user;
   if (!user) throw new Error("No hay sesion activa.");
 
-  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+  await asegurarEditorRepositorioPublico({ repositorioId, userId: user.id });
 
   const safeName = `${archivo.name || "archivo"}`
     .replace(/[^a-zA-Z0-9.-]/g, "_")
@@ -754,7 +791,7 @@ export async function eliminarArchivoRepositorioPublico({ repositorioId, archivo
   const user = session?.user;
   if (!user) throw new Error("No hay sesion activa.");
 
-  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+  await asegurarEditorRepositorioPublico({ repositorioId, userId: user.id });
 
   if (path) {
     const { error: removeError } = await supabase.storage
@@ -804,6 +841,108 @@ export async function eliminarRepositorioPublico({ repositorioId }) {
     .from("repositorios_publicos")
     .delete()
     .eq("id", repositorioId);
+  if (error) throw error;
+}
+
+export async function listarColaboradoresRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) return [];
+  const { data, error } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .select("id, repositorio_id, user_id, email, created_at, created_by")
+    .eq("repositorio_id", repoId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function agregarColaboradorPorEmail({ repositorioId, email }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  const emailLimpio = `${email || ""}`.trim().toLowerCase();
+  if (!repoId) throw new Error("Repositorio inválido.");
+  if (!emailLimpio) throw new Error("El correo es obligatorio.");
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  await asegurarPropietarioRepositorioPublico({ repositorioId: repoId, userId: user.id });
+
+  const { data: perfil, error: perfilError } = await supabase
+    .from("profiles")
+    .select("id, email")
+    .ilike("email", emailLimpio)
+    .maybeSingle();
+  if (perfilError) throw perfilError;
+  if (!perfil?.id) {
+    throw new Error("No existe un usuario con ese correo.");
+  }
+  if (perfil.id === user.id) {
+    throw new Error("Ya eres el creador del repositorio.");
+  }
+
+  const { data, error } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .upsert(
+      {
+        repositorio_id: repoId,
+        user_id: perfil.id,
+        email: emailLimpio,
+        created_by: user.id
+      },
+      { onConflict: "repositorio_id,user_id" }
+    )
+    .select("id, repositorio_id, user_id, email, created_at, created_by")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function eliminarColaboradorRepositorioPublico({ repositorioId, userId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  const uid = `${userId || ""}`.trim();
+  if (!repoId || !uid) throw new Error("Datos inválidos.");
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  // Solo creador puede expulsar colaboradores
+  await asegurarPropietarioRepositorioPublico({ repositorioId: repoId, userId: user.id });
+
+  const { error } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .delete()
+    .eq("repositorio_id", repoId)
+    .eq("user_id", uid);
+  if (error) throw error;
+}
+
+export async function salirRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) throw new Error("Repositorio inválido.");
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  const { error } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .delete()
+    .eq("repositorio_id", repoId)
+    .eq("user_id", user.id);
   if (error) throw error;
 }
 

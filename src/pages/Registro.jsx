@@ -98,6 +98,7 @@ function Registro() {
                 telefono: telefono.trim(),
                 nombre: nombre.trim(),
                 apellido: apellido.trim(),
+                email: email.trim().toLowerCase(),
                 career: ''
               },
               { onConflict: 'id' }

@@ -24,6 +24,21 @@ const DIAS = [
   { value: 0, label: "Dom" }
 ];
 
+const FECHA_OPTIONS = [
+  { value: "all", label: "Sin filtro de fecha" },
+  { value: "1m", label: "Último mes" },
+  { value: "3m", label: "Últimos 3 meses" },
+  { value: "1y", label: "Último año" }
+];
+
+const RATING_OPTIONS = [
+  { value: "all", label: "Sin filtro de puntuación" },
+  { value: "4", label: "4 o más" },
+  { value: "3", label: "3 o más" },
+  { value: "2", label: "2 o más" },
+  { value: "1", label: "1 o más" }
+];
+
 export default function Home() {
   const navigate = useNavigate();
   const [nombreUsuario, setNombreUsuario] = useState("");
@@ -46,6 +61,7 @@ export default function Home() {
   const [busquedaAbierta, setBusquedaAbierta] = useState(false);
   const [busquedaTexto, setBusquedaTexto] = useState("");
   const [filtroFechaRepos, setFiltroFechaRepos] = useState("all");
+  const [filtroRatingRepos, setFiltroRatingRepos] = useState("all");
   const [reposSugeridos, setReposSugeridos] = useState([]);
   const [buscandoRepos, setBuscandoRepos] = useState(false);
   const [favoritosRepos, setFavoritosRepos] = useState([]);
@@ -55,6 +71,10 @@ export default function Home() {
   const [nuevoNombreGrupoEditar, setNuevoNombreGrupoEditar] = useState("");
   const [tieneSesion, setTieneSesion] = useState(false);
   const toastTimeoutRef = useRef(null);
+  const fechaFiltroLabel =
+    FECHA_OPTIONS.find(o => o.value === filtroFechaRepos)?.label || "Sin filtro de fecha";
+  const ratingFiltroLabel =
+    RATING_OPTIONS.find(o => o.value === filtroRatingRepos)?.label || "Sin filtro de puntuación";
 
   const resumenHorario = useMemo(() => {
     if (!horario.length) return "Sin horario";
@@ -90,7 +110,7 @@ export default function Home() {
   useEffect(() => {
     if (!busquedaAbierta) return;
     const q = busquedaTexto.trim();
-    if (!q && filtroFechaRepos === "all") {
+    if (!q && filtroFechaRepos === "all" && filtroRatingRepos === "all") {
       setReposSugeridos([]);
       return;
     }
@@ -98,7 +118,7 @@ export default function Home() {
     const timer = setTimeout(async () => {
       try {
         setBuscandoRepos(true);
-        const resultados = await buscarRepositoriosPublicos(q, filtroFechaRepos);
+        const resultados = await buscarRepositoriosPublicos(q, filtroFechaRepos, filtroRatingRepos);
         setReposSugeridos(resultados);
       } catch (e) {
         setError(e.message);
@@ -108,7 +128,7 @@ export default function Home() {
     }, 220);
 
     return () => clearTimeout(timer);
-  }, [busquedaAbierta, busquedaTexto, filtroFechaRepos]);
+  }, [busquedaAbierta, busquedaTexto, filtroFechaRepos, filtroRatingRepos]);
 
   async function cargarGrupos(userIdActual = userId) {
     try {
@@ -955,17 +975,32 @@ export default function Home() {
                 onChange={e => setBusquedaTexto(e.target.value)}
                 placeholder="Buscar por grupo, admin, título o creador"
               />
-              <select
-                className="input"
-                value={filtroFechaRepos}
-                onChange={e => setFiltroFechaRepos(e.target.value)}
-                style={{ marginTop: 8 }}
-              >
-                <option value="all">Sin filtro</option>
-                <option value="1m">Último mes</option>
-                <option value="3m">Últimos 3 meses</option>
-                <option value="1y">Último año</option>
-              </select>
+              <details className="filters-details">
+                <summary className="input filters-summary">
+                  <span>Filtros</span>
+                  <span className="filters-summary-meta">{fechaFiltroLabel} · {ratingFiltroLabel}</span>
+                </summary>
+                <div className="filters-body">
+                  <select
+                    className="input"
+                    value={filtroFechaRepos}
+                    onChange={e => setFiltroFechaRepos(e.target.value)}
+                  >
+                    {FECHA_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="input"
+                    value={filtroRatingRepos}
+                    onChange={e => setFiltroRatingRepos(e.target.value)}
+                  >
+                    {RATING_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </details>
               <div className="repo-suggest-list" style={{ marginTop: 12 }}>
                 {reposSugeridos.map(repo => (
                   <button
@@ -1011,7 +1046,7 @@ export default function Home() {
                   </button>
                 ))}
                 {buscandoRepos && <div className="label">Buscando...</div>}
-                {!buscandoRepos && (busquedaTexto.trim() || filtroFechaRepos !== "all") && reposSugeridos.length === 0 && (
+                {!buscandoRepos && (busquedaTexto.trim() || filtroFechaRepos !== "all" || filtroRatingRepos !== "all") && reposSugeridos.length === 0 && (
                   <div className="label">Sin resultados</div>
                 )}
               </div>
@@ -1027,3 +1062,5 @@ export default function Home() {
     </div>
   );
 }
+
+

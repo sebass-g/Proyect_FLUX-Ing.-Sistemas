@@ -303,6 +303,56 @@ select.input {
   padding-right: 36px;
 }
 
+/* === FILTROS === */
+.filters-details {
+  margin-top: 8px;
+}
+
+.filters-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.filters-summary::marker {
+  content: "";
+}
+
+.filters-summary::-webkit-details-marker {
+  display: none;
+}
+
+.filters-summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid rgba(37, 52, 63, 0.6);
+  border-bottom: 2px solid rgba(37, 52, 63, 0.6);
+  transform: rotate(45deg);
+  transition: transform 120ms ease;
+}
+
+.filters-details[open] .filters-summary::after {
+  transform: rotate(225deg);
+}
+
+.filters-summary-meta {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(37, 52, 63, 0.6);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.filters-body {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
 /* === BOTONES === */
 .btn{
   width: 100%;
