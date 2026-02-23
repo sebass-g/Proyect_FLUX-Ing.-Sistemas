@@ -807,6 +807,106 @@ export async function eliminarRepositorioPublico({ repositorioId }) {
   if (error) throw error;
 }
 
+// -----------------------------
+// Favoritos de repositorios
+// -----------------------------
+export async function listarRepositoriosFavoritos() {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user?.id;
+  if (!userId) return [];
+
+  const { data: favs, error: favsError } = await supabase
+    .from("repositorio_favoritos")
+    .select("repositorio_id")
+    .eq("user_id", userId);
+  if (favsError) throw favsError;
+  const ids = (favs || []).map(f => f.repositorio_id).filter(Boolean);
+  if (!ids.length) return [];
+
+  const { data, error } = await supabase
+    .from("repositorios_publicos")
+    .select("id, titulo, creador_id, creador_nombre, created_at")
+    .in("id", ids)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function isRepositorioFavorito(repoId) {
+  if (!repoId) return false;
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user?.id;
+  if (!userId) return false;
+
+  const { data, error } = await supabase
+    .from("repositorio_favoritos")
+    .select("id")
+    .eq("repositorio_id", repoId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return Boolean(data);
+}
+
+export async function toggleFavoritoRepositorio(repoId) {
+  if (!repoId) throw new Error("Repositorio inválido.");
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("Inicia sesión para marcar favoritos.");
+
+  const { data: existing, error: existingError } = await supabase
+    .from("repositorio_favoritos")
+    .select("id")
+    .eq("repositorio_id", repoId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  if (existing) {
+    const { error } = await supabase.from("repositorio_favoritos").delete().eq("id", existing.id);
+    if (error) throw error;
+    return { favorito: false };
+  } else {
+    const { data, error } = await supabase
+      .from("repositorio_favoritos")
+      .insert({ repositorio_id: repoId, user_id: userId })
+      .select()
+      .single();
+    if (error) throw error;
+    return { favorito: true, row: data };
+  }
+}
+
+export async function listarRepositoriosCreados() {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user?.id;
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from("repositorios_publicos")
+    .select("id, titulo, creador_id, creador_nombre, created_at")
+    .eq("creador_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function listarArchivosGrupoPorId({ grupoId }) {
   const { data: grupo, error: errorGrupo } = await supabase
     .from("grupos")

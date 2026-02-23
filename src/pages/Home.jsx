@@ -10,6 +10,7 @@ import {
   obtenerVistaPreviaPorCodigo,
   unirseAGrupoPorCodigo
 } from "../servicios/grupos.api";
+import { listarRepositoriosFavoritos, listarRepositoriosCreados } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorGrupo } from "../utils/groupColors";
 
@@ -47,6 +48,8 @@ export default function Home() {
   const [filtroFechaRepos, setFiltroFechaRepos] = useState("all");
   const [reposSugeridos, setReposSugeridos] = useState([]);
   const [buscandoRepos, setBuscandoRepos] = useState(false);
+  const [favoritosRepos, setFavoritosRepos] = useState([]);
+  const [misReposCreados, setMisReposCreados] = useState([]);
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
   const [grupoEditando, setGrupoEditando] = useState(null);
   const [nuevoNombreGrupoEditar, setNuevoNombreGrupoEditar] = useState("");
@@ -120,6 +123,28 @@ export default function Home() {
     }
   }
 
+  async function cargarFavoritos() {
+    try {
+      const favs = await listarRepositoriosFavoritos();
+      setFavoritosRepos(favs || []);
+    } catch (e) {
+      console.warn("Error cargando favoritos:", e.message);
+      setFavoritosRepos([]);
+    }
+  }
+
+  async function cargarReposCreados() {
+    try {
+      const creados = await listarRepositoriosCreados();
+      setMisReposCreados(creados || []);
+    } catch (e) {
+      console.warn("No se pudieron cargar repos creados:", e.message);
+      setMisReposCreados([]);
+    }
+  }
+
+  
+
   useEffect(() => {
     let isMounted = true;
 
@@ -170,6 +195,8 @@ export default function Home() {
       }
 
       await cargarGrupos(user?.id || null);
+      await cargarFavoritos();
+      await cargarReposCreados();
     }
 
     cargarContexto();
@@ -177,6 +204,62 @@ export default function Home() {
       isMounted = false;
     };
   }, []);
+
+  // Real-time: cuando el usuario se une/abandona grupos, recargar lista automáticamente
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`user-grupo-members-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "grupo_miembros",
+          filter: `user_id=eq.${userId}`
+        },
+        async payload => {
+          // recargar grupos cuando cambian membresías
+          cargarGrupos();
+          try {
+            const ev = payload?.event;
+            if (ev === "INSERT") {
+              const gid = payload?.new?.grupo_id;
+              if (gid) {
+                const { data: g, error: gErr } = await supabase
+                  .from("grupos")
+                  .select("id, nombre, codigo")
+                  .eq("id", gid)
+                  .maybeSingle();
+                if (!gErr && g) {
+                  setToastMensaje(`${g.nombre} agregado a tus grupos`);
+                  setToastGrupoId(g.id);
+                  setMostrarToast(true);
+                  if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                  toastTimeoutRef.current = setTimeout(() => setMostrarToast(false), 6000);
+                }
+              }
+            } else if (ev === "DELETE") {
+              // opcional: notificar que salió del grupo
+              const gid = payload?.old?.grupo_id;
+              if (gid) {
+                setToastMensaje(`Has salido de un grupo`);
+                setMostrarToast(true);
+                if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+                toastTimeoutRef.current = setTimeout(() => setMostrarToast(false), 6000);
+              }
+            }
+          } catch (e) {
+            console.warn("Error handling grupo_miembros realtime:", e.message);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!gruposUsuario.length) return;
@@ -215,6 +298,30 @@ export default function Home() {
       supabase.removeChannel(channel);
     };
   }, [gruposUsuario, userId]);
+
+  // Real-time: cuando el usuario crea/elimina repositorios públicos creados por él, recargar
+  useEffect(() => {
+    if (!userId) return;
+    const chan = supabase
+      .channel(`user-repos-created-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "repositorios_publicos",
+          filter: `creador_id=eq.${userId}`
+        },
+        payload => {
+          cargarReposCreados();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chan);
+    };
+  }, [userId]);
 
   useEffect(() => {
     if (!menuGrupoAbiertoId) return;
@@ -373,81 +480,146 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="classroom-grid">
-        {gruposUsuario.map(grupo => {
-          const iniciales = (grupo.nombre || "G")
-            .split(" ")
-            .map(p => p[0])
-            .join("")
-            .slice(0, 2)
-            .toUpperCase();
-          const color = obtenerColorGrupo(grupo.codigo || grupo.nombre || "");
+      {misReposCreados && misReposCreados.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <strong>Mis repositorios</strong>
+          <div className="classroom-grid" style={{ marginTop: 8 }}>
+            {misReposCreados.map(r => {
+              const iniciales = (r.titulo || "R")
+                .split(" ")
+                .map(p => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+              const color = obtenerColorGrupo(r.id || r.titulo || "");
+              return (
+                <button key={r.id} className="classroom-card" onClick={() => navigate(`/repos-publicos/${r.id}`)}>
+                  <div className="classroom-card-banner" style={{ "--banner-a": color.a, "--banner-b": color.b }}>
+                    <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>{iniciales}</div>
+                  </div>
+                  <div className="classroom-card-body">
+                    <div className="classroom-card-title">{r.titulo}</div>
+                    <div className="label classroom-card-code">Creador: {r.creador_nombre || "Usuario"}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
-          return (
-            <button
-              key={grupo.id}
-              className="classroom-card"
-              onClick={() => navigate(`/grupos/${grupo.codigo}`)}
-            >
-              <div
-                className="classroom-card-banner"
-                style={{ "--banner-a": color.a, "--banner-b": color.b }}
-              >
-                <div className="classroom-card-menu-wrap">
-                  <button
-                    className="classroom-card-kebab"
-                    aria-label="Opciones del grupo"
-                    onClick={e => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setMenuGrupoAbiertoId(prev => (prev === grupo.id ? null : grupo.id));
-                    }}
+      {favoritosRepos && favoritosRepos.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <strong>Favoritos</strong>
+          <div className="classroom-grid" style={{ marginTop: 8 }}>
+            {favoritosRepos.map(r => {
+              const iniciales = (r.titulo || "R")
+                .split(" ")
+                .map(p => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+              const color = obtenerColorGrupo(r.id || r.titulo || "");
+              return (
+                <button key={r.id} className="classroom-card" onClick={() => navigate(`/repos-publicos/${r.id}`)}>
+                  <div className="classroom-card-banner" style={{ "--banner-a": color.a, "--banner-b": color.b }}>
+                    <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>{iniciales}</div>
+                  </div>
+                  <div className="classroom-card-body">
+                    <div className="classroom-card-title">{r.titulo}</div>
+                    <div className="label classroom-card-code">Creador: {r.creador_nombre || "Usuario"}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {gruposUsuario && gruposUsuario.length > 0 ? (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <strong>Mis grupos</strong>
+          <div className="classroom-grid" style={{ marginTop: 8 }}>
+            {gruposUsuario.map(grupo => {
+              const iniciales = (grupo.nombre || "G")
+                .split(" ")
+                .map(p => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+              const color = obtenerColorGrupo(grupo.codigo || grupo.nombre || "");
+
+              return (
+                <button
+                  key={grupo.id}
+                  className="classroom-card"
+                  onClick={() => navigate(`/grupos/${grupo.codigo}`)}
+                >
+                  <div
+                    className="classroom-card-banner"
+                    style={{ "--banner-a": color.a, "--banner-b": color.b }}
                   >
-                    ⋯
-                  </button>
+                    <div className="classroom-card-menu-wrap">
+                      <button
+                        className="classroom-card-kebab"
+                        aria-label="Opciones del grupo"
+                        onClick={e => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setMenuGrupoAbiertoId(prev => (prev === grupo.id ? null : grupo.id));
+                        }}
+                      >
+                        ⋯
+                      </button>
 
-                  {menuGrupoAbiertoId === grupo.id && (
-                    <div
-                      className="classroom-card-menu"
-                      onClick={e => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      {grupo.isAdmin && (
-                        <button
-                          className="classroom-card-menu-item"
-                          onClick={() => {
-                            setGrupoEditando(grupo);
-                            setNuevoNombreGrupoEditar(grupo.nombre || "");
-                            setMenuGrupoAbiertoId(null);
+                      {menuGrupoAbiertoId === grupo.id && (
+                        <div
+                          className="classroom-card-menu"
+                          onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
                           }}
                         >
-                          Editar nombre
-                        </button>
+                          {grupo.isAdmin && (
+                            <button
+                              className="classroom-card-menu-item"
+                              onClick={() => {
+                                setGrupoEditando(grupo);
+                                setNuevoNombreGrupoEditar(grupo.nombre || "");
+                                setMenuGrupoAbiertoId(null);
+                              }}
+                            >
+                              Editar nombre
+                            </button>
+                          )}
+                          <button
+                            className="classroom-card-menu-item danger"
+                            onClick={() => manejarAbandonarGrupoHome(grupo)}
+                          >
+                            Abandonar grupo
+                          </button>
+                        </div>
                       )}
-                      <button
-                        className="classroom-card-menu-item danger"
-                        onClick={() => manejarAbandonarGrupoHome(grupo)}
-                      >
-                        Abandonar grupo
-                      </button>
                     </div>
-                  )}
-                </div>
 
-                <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>
-                  {iniciales}
-                </div>
-              </div>
-              <div className="classroom-card-body">
-                <div className="classroom-card-title">{grupo.nombre}</div>
-                <div className="label classroom-card-code">Código: {grupo.codigo}</div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                    <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>
+                      {iniciales}
+                    </div>
+                  </div>
+                  <div className="classroom-card-body">
+                    <div className="classroom-card-title">{grupo.nombre}</div>
+                    <div className="label classroom-card-code">Código: {grupo.codigo}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="classroom-grid">
+          {/* empty grid when no groups - message handled below */}
+        </div>
+      )}
 
       {gruposUsuario.length === 0 && (
         <div className="card" style={{ marginTop: 16 }}>
