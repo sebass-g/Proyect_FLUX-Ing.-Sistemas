@@ -448,6 +448,7 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
   let reposPublicos = [];
   let admins = [];
   let archivos = [];
+  let ratings = [];
 
   if (esGuest) {
     const [
@@ -491,6 +492,17 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
     archivos = archivosData || [];
   }
 
+  const reposPublicosIds = (reposPublicos || []).map(r => r.id).filter(Boolean);
+  if (reposPublicosIds.length) {
+    const { data: ratingsData, error: ratingsError } = await supabase
+      .from("ratings")
+      .select("repo_id, rating")
+      .in("repo_id", reposPublicosIds)
+      .limit(5000);
+    if (ratingsError) throw ratingsError;
+    ratings = ratingsData || [];
+  }
+
   const adminPorGrupo = new Map((admins || []).map(a => [a.grupo_id, a.display_name]));
   const countArchivosPorGrupo = new Map();
   for (const a of archivos || []) {
@@ -524,6 +536,7 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
 
   const resultadosReposPublicos = (reposPublicos || [])
     .map(r => ({
+      ...obtenerPromedioRating({ ratings, repositorioId: r.id }),
       tipo: "repo_publico",
       id: r.id,
       titulo: r.titulo,
@@ -553,6 +566,16 @@ export async function buscarRepositoriosPublicos(textoBusqueda, filtroFecha = "a
       const nb = b.nombre || b.titulo || "";
       return na.localeCompare(nb);
     });
+}
+
+function obtenerPromedioRating({ ratings, repositorioId }) {
+  const lista = (ratings || []).filter(r => r.repo_id === repositorioId);
+  if (!lista.length) {
+    return { ratingPromedio: 0, ratingTotal: 0 };
+  }
+  const suma = lista.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+  const total = lista.length;
+  return { ratingPromedio: suma / total, ratingTotal: total };
 }
 
 export async function crearRepositorioPublico({ titulo, creadorNombre = "" }) {
@@ -591,6 +614,69 @@ export async function obtenerRepositorioPublicoPorId(id) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+export async function obtenerMiCalificacionRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) return null;
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("ratings")
+    .select("rating")
+    .eq("repo_id", repoId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.rating ?? null;
+}
+
+export async function obtenerPromedioRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) return { ratingPromedio: 0, ratingTotal: 0 };
+
+  const { data, error } = await supabase
+    .from("ratings")
+    .select("rating", { count: "exact" })
+    .eq("repo_id", repoId);
+  if (error) throw error;
+
+  const lista = data || [];
+  if (!lista.length) return { ratingPromedio: 0, ratingTotal: 0 };
+  const suma = lista.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+  return { ratingPromedio: suma / lista.length, ratingTotal: lista.length };
+}
+
+export async function guardarCalificacionRepositorioPublico({ repositorioId, rating }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  const valor = Number(rating);
+  if (!repoId) throw new Error("Repositorio invalido.");
+  if (!Number.isFinite(valor) || valor < 1 || valor > 5) {
+    throw new Error("La calificacion debe estar entre 1 y 5.");
+  }
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  const { error } = await supabase
+    .from("ratings")
+    .upsert(
+      { repo_id: repoId, user_id: user.id, rating: valor },
+      { onConflict: "repo_id,user_id" }
+    );
+  if (error) throw error;
 }
 
 async function asegurarPropietarioRepositorioPublico({ repositorioId, userId }) {

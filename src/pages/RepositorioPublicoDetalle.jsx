@@ -3,7 +3,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   eliminarRepositorioPublico,
   eliminarArchivoRepositorioPublico,
+  guardarCalificacionRepositorioPublico,
   listarArchivosRepositorioPublico,
+  obtenerMiCalificacionRepositorioPublico,
+  obtenerPromedioRepositorioPublico,
   obtenerRepositorioPublicoPorId,
   subirArchivoRepositorioPublico
 } from "../servicios/grupos.api";
@@ -21,6 +24,11 @@ export default function RepositorioPublicoDetalle() {
   const [esCreador, setEsCreador] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [userId, setUserId] = useState(null);
+  const [ratingPromedio, setRatingPromedio] = useState(0);
+  const [ratingTotal, setRatingTotal] = useState(0);
+  const [miRating, setMiRating] = useState("");
+  const [guardandoRating, setGuardandoRating] = useState(false);
   const inputRef = useRef(null);
 
   async function cargarArchivos(repoId) {
@@ -30,6 +38,22 @@ export default function RepositorioPublicoDetalle() {
     }
     const data = await listarArchivosRepositorioPublico({ repositorioId: repoId });
     setArchivos(data);
+  }
+
+  async function cargarRatings(repoId) {
+    if (!repoId) {
+      setRatingPromedio(0);
+      setRatingTotal(0);
+      setMiRating("");
+      return;
+    }
+    const [promedio, miCalificacion] = await Promise.all([
+      obtenerPromedioRepositorioPublico({ repositorioId: repoId }),
+      obtenerMiCalificacionRepositorioPublico({ repositorioId: repoId })
+    ]);
+    setRatingPromedio(promedio?.ratingPromedio || 0);
+    setRatingTotal(promedio?.ratingTotal || 0);
+    setMiRating(miCalificacion ? String(miCalificacion) : "");
   }
 
   useEffect(() => {
@@ -43,8 +67,10 @@ export default function RepositorioPublicoDetalle() {
           data: { session }
         } = await supabase.auth.getSession();
         const uid = session?.user?.id || null;
+        setUserId(uid);
         setEsCreador(Boolean(uid && data?.creador_id && uid === data.creador_id));
         await cargarArchivos(data?.id);
+        await cargarRatings(data?.id);
       } catch (e) {
         setError(e.message);
         setRepo(null);
@@ -115,6 +141,30 @@ export default function RepositorioPublicoDetalle() {
     }
   }
 
+  async function manejarCalificar(event) {
+    if (!repo?.id) return;
+    if (!userId) {
+      setMensaje("Inicia sesion para calificar.");
+      return;
+    }
+    const valor = Number(event.target.value);
+    setMiRating(event.target.value);
+    if (!valor) return;
+
+    setGuardandoRating(true);
+    try {
+      await guardarCalificacionRepositorioPublico({ repositorioId: repo.id, rating: valor });
+      const promedio = await obtenerPromedioRepositorioPublico({ repositorioId: repo.id });
+      setRatingPromedio(promedio?.ratingPromedio || 0);
+      setRatingTotal(promedio?.ratingTotal || 0);
+      setMensaje("Calificacion guardada.");
+    } catch (e) {
+      setMensaje(`Error al calificar: ${e.message}`);
+    } finally {
+      setGuardandoRating(false);
+    }
+  }
+
   if (cargando) {
     return (
       <div className="container">
@@ -153,8 +203,35 @@ export default function RepositorioPublicoDetalle() {
         <div className="label">
           Fecha de creación: {repo.created_at ? new Date(repo.created_at).toLocaleDateString() : "-"}
         </div>
+        <div className="label">
+          {ratingTotal
+            ? `Calificacion promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal})`
+            : "Calificacion promedio: sin calificaciones"}
+        </div>
         <div className="label" style={{ marginBottom: 0 }}>
           Este repositorio es público y no está vinculado a un grupo.
+        </div>
+        <div style={{ marginTop: 8 }}>
+          {userId ? (
+            <>
+              <label className="label">Tu calificacion</label>
+              <select
+                className="input"
+                value={miRating}
+                onChange={manejarCalificar}
+                disabled={guardandoRating}
+              >
+                <option value="">Selecciona (1-5)</option>
+                {Array.from({ length: 5 }, (_, idx) => (
+                  <option key={idx + 1} value={idx + 1}>
+                    {idx + 1}
+                  </option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <div className="label">Inicia sesion para calificar.</div>
+          )}
         </div>
         {esCreador && (
           <div style={{ marginTop: 12 }}>

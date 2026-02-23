@@ -829,6 +829,11 @@ export default function Home() {
                         <small className="repo-suggest-meta">
                           Creado: {repo.createdAt ? new Date(repo.createdAt).toLocaleDateString() : "-"}
                         </small>
+                        <small className="repo-suggest-meta">
+                          {repo.ratingTotal
+                            ? `Calificacion: ${Number(repo.ratingPromedio || 0).toFixed(1)}/5 (${repo.ratingTotal})`
+                            : "Sin calificaciones"}
+                        </small>
                       </>
                     )}
                   </button>
