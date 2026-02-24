@@ -11,15 +11,41 @@ const TaskMaster = ({ esAdmin, tareas, onAgregarTarea, onToggleTarea, onBorrarTa
     }
   };
 
+  // 1. Cálculos para la barra de progreso
+  const totalTareas = tareas.length;
+  const tareasCompletadas = tareas.filter(tarea => tarea.completada).length;
+  const progreso = totalTareas === 0 ? 0 : Math.round((tareasCompletadas / totalTareas) * 100);
+
   return (
     <div className="task-master-container" style={{ padding: '20px', backgroundColor: '#fff', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-      <h3 style={{ marginTop: 0 }}>Gestor de Tareas</h3>
-      
+      <h3 style={{ marginTop: 0, marginBottom: '15px' }}>Gestor de Tareas</h3>
+
+      {/* 2. Barra de Progreso (Solo se muestra si hay tareas) */}
+      {totalTareas > 0 && (
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginBottom: '5px', color: '#666' }}>
+            <span>Progreso</span>
+            <span>{progreso}%</span>
+          </div>
+          <div style={{ width: '100%', backgroundColor: '#e9ecef', borderRadius: '8px', height: '10px', overflow: 'hidden' }}>
+            <div 
+              style={{ 
+                width: `${progreso}%`, 
+                backgroundColor: progreso === 100 ? '#28a745' : '#f48042', // Verde si es 100%, naranja si no
+                height: '100%', 
+                borderRadius: '8px',
+                transition: 'width 0.4s ease-in-out, background-color 0.4s ease-in-out' // Animación suave
+              }} 
+            />
+          </div>
+        </div>
+      )}
+
       {/* Formulario para agregar tareas (solo visible para admin) */}
       {esAdmin && (
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-          <input 
-            type="text" 
+          <input
+            type="text"
             value={nuevaTarea}
             onChange={(e) => setNuevaTarea(e.target.value)}
             placeholder="Añadir nueva tarea..."
@@ -35,19 +61,21 @@ const TaskMaster = ({ esAdmin, tareas, onAgregarTarea, onToggleTarea, onBorrarTa
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {tareas.map((tarea) => (
           <li key={tarea.id} style={{ display: 'flex', alignItems: 'center', marginBottom: '10px', padding: '10px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-            <input 
-              type="checkbox" 
-              checked={tarea.completada} 
-              onChange={() => onToggleTarea(tarea.id)}
+            <input
+              type="checkbox"
+              checked={tarea.completada}
+              onChange={() => onToggleTarea(tarea.id, !tarea.completada)}
               style={{ marginRight: '15px', transform: 'scale(1.2)', cursor: 'pointer' }}
             />
-            <span style={{ 
-              textDecoration: tarea.completada ? 'line-through' : 'none', 
+            
+            <span style={{
+              textDecoration: tarea.completada ? 'line-through' : 'none',
               color: tarea.completada ? '#888' : '#333',
               flexGrow: 1,
-              fontSize: '16px'
+              fontSize: '16px',
+              transition: 'color 0.3s'
             }}>
-              {tarea.texto}
+              {tarea.titulo}
             </span>
             
             {/* Botón de borrar (solo visible para admin) */}
@@ -62,7 +90,7 @@ const TaskMaster = ({ esAdmin, tareas, onAgregarTarea, onToggleTarea, onBorrarTa
       
       {/* Mensaje si no hay tareas */}
       {tareas.length === 0 && (
-        <p style={{ color: '#888', fontStyle: 'italic' }}>No hay tareas asignadas todavía.</p>
+        <p style={{ color: '#888', fontStyle: 'italic', textAlign: 'center' }}>No hay tareas asignadas todavía.</p>
       )}
     </div>
   );

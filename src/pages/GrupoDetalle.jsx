@@ -103,7 +103,6 @@ export default function GrupoDetalle() {
     }
   };
 
-  // CORRECCIÓN: Se fusionaron las dos declaraciones en una sola
   const handleEditarTarea = async (tareaId, nuevoTitulo) => {
     try {
       // 1. Actualización optimista en la UI
@@ -845,7 +844,6 @@ export default function GrupoDetalle() {
           <TaskMaster
           esAdmin={esAdmin}
           tareas={tareas}
-          // CORRECCIÓN: 'miembros' no estaba definido, se usa el estado del grupo
           totalMiembros={grupo?.miembros?.length || 0} 
           onAgregarTarea={handleAgregarTarea}
           onToggleTarea={handleToggleTarea}
@@ -944,7 +942,6 @@ export default function GrupoDetalle() {
         </div>
       )}
 
-      {error && <div className="alert">{error}</div>}
     </div>
   );
 }
