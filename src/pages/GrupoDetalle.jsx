@@ -7,7 +7,11 @@ import {
   eliminarArchivoGrupo,
   eliminarGrupo,
   expulsarMiembro,
-  obtenerVistaPreviaPorCodigo
+  obtenerVistaPreviaPorCodigo,
+  listarMensajesGrupo,
+  enviarMensajeGrupo,
+  listarLecturasMensajes,
+  marcarMensajesLeidos
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorGrupo } from "../utils/groupColors";
@@ -46,6 +50,22 @@ export default function GrupoDetalle() {
   const [mensajeSubida, setMensajeSubida] = useState("");
   const inputRef = useRef(null);
 
+  const [mensajesChat, setMensajesChat] = useState([]);
+  const [nuevoMensaje, setNuevoMensaje] = useState("");
+  const [cargandoChat, setCargandoChat] = useState(false);
+  const [cargandoMasChat, setCargandoMasChat] = useState(false);
+  const [chatTieneMas, setChatTieneMas] = useState(true);
+  const [chatCursor, setChatCursor] = useState(null);
+  const [chatInicialListo, setChatInicialListo] = useState(false);
+  const [errorChat, setErrorChat] = useState("");
+  const [lecturasPorMensaje, setLecturasPorMensaje] = useState({});
+  const [lecturasIdsPorMensaje, setLecturasIdsPorMensaje] = useState({});
+  const lecturasRef = useRef({});
+  const mensajesRef = useRef([]);
+  const chatEndRef = useRef(null);
+  const chatScrollRef = useRef(null);
+  const [avatarPorUsuario, setAvatarPorUsuario] = useState({});
+
   const [mostrarPerfil, setMostrarPerfil] = useState(false);
   const [miembroActivo, setMiembroActivo] = useState(null);
   const [perfilMiembro, setPerfilMiembro] = useState(null);
@@ -64,6 +84,15 @@ export default function GrupoDetalle() {
     { value: 6, label: "Sab" },
     { value: 0, label: "Dom" }
   ];
+
+  const totalMiembros = grupo?.miembros?.length || 0;
+  const miembrosPorId = useMemo(() => {
+    const map = new Map();
+    (grupo?.miembros || []).forEach(m => {
+      if (m?.user_id) map.set(m.user_id, m.nombre || "Usuario");
+    });
+    return map;
+  }, [grupo]);
 
   const cargarTareas = async (idGrupo) => {
     if (!idGrupo) return;
@@ -219,6 +248,153 @@ export default function GrupoDetalle() {
       });
   }, [grupo]);
 
+  const actualizarLecturasDesdeRows = rows => {
+    const map = {};
+    (rows || []).forEach(r => {
+      if (!map[r.mensaje_id]) map[r.mensaje_id] = new Set();
+      map[r.mensaje_id].add(r.user_id);
+    });
+    lecturasRef.current = map;
+    const counts = {};
+    Object.keys(map).forEach(id => {
+      counts[id] = map[id].size;
+    });
+    setLecturasPorMensaje(counts);
+    const idsMap = {};
+    Object.keys(map).forEach(id => {
+      idsMap[id] = Array.from(map[id]);
+    });
+    setLecturasIdsPorMensaje(idsMap);
+  };
+
+  const agregarLecturaLocal = (mensajeId, usuarioId) => {
+    if (!mensajeId || !usuarioId) return;
+    const map = lecturasRef.current || {};
+    if (!map[mensajeId]) map[mensajeId] = new Set();
+    if (map[mensajeId].has(usuarioId)) return;
+    map[mensajeId].add(usuarioId);
+    lecturasRef.current = map;
+    setLecturasPorMensaje(prev => ({
+      ...prev,
+      [mensajeId]: map[mensajeId].size
+    }));
+    setLecturasIdsPorMensaje(prev => ({
+      ...prev,
+      [mensajeId]: Array.from(map[mensajeId])
+    }));
+  };
+
+  const mergeLecturas = rows => {
+    if (!rows?.length) return;
+    const map = lecturasRef.current || {};
+    rows.forEach(r => {
+      if (!map[r.mensaje_id]) map[r.mensaje_id] = new Set();
+      map[r.mensaje_id].add(r.user_id);
+    });
+    lecturasRef.current = map;
+    const counts = {};
+    const idsMap = {};
+    Object.keys(map).forEach(id => {
+      counts[id] = map[id].size;
+      idsMap[id] = Array.from(map[id]);
+    });
+    setLecturasPorMensaje(counts);
+    setLecturasIdsPorMensaje(idsMap);
+  };
+
+  const isNearBottom = () => {
+    const el = chatScrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  };
+
+  const cargarChat = async (grupoId = grupo?.id) => {
+    if (!grupoId) return;
+    setCargandoChat(true);
+    setErrorChat("");
+    try {
+      const data = await listarMensajesGrupo({ grupoId, limite: 20 });
+      setMensajesChat(data || []);
+      setChatTieneMas((data || []).length === 20);
+      const oldest = data?.[0]?.created_at || null;
+      setChatCursor(oldest);
+      setChatInicialListo(true);
+
+      const ids = (data || []).map(m => m.id);
+      const lecturas = await listarLecturasMensajes({ mensajeIds: ids });
+      actualizarLecturasDesdeRows(lecturas);
+
+      if (userId) {
+        const idsParaLeer = (data || [])
+          .filter(m => m.user_id !== userId)
+          .map(m => m.id);
+        if (idsParaLeer.length) {
+          await marcarMensajesLeidos({ mensajeIds: idsParaLeer });
+        }
+      }
+    } catch (e) {
+      setErrorChat(e.message);
+    } finally {
+      setCargandoChat(false);
+    }
+  };
+
+  const cargarMensajesAnteriores = async () => {
+    if (!grupo?.id || !chatTieneMas || cargandoMasChat) return;
+    setCargandoMasChat(true);
+    setErrorChat("");
+    const container = chatScrollRef.current;
+    const prevHeight = container?.scrollHeight || 0;
+    const prevTop = container?.scrollTop || 0;
+    try {
+      const data = await listarMensajesGrupo({
+        grupoId: grupo.id,
+        limite: 20,
+        before: chatCursor
+      });
+      if (!data || data.length === 0) {
+        setChatTieneMas(false);
+        return;
+      }
+      setMensajesChat(prev => [...data, ...prev]);
+      const ids = data.map(m => m.id);
+      const lecturas = await listarLecturasMensajes({ mensajeIds: ids });
+      mergeLecturas(lecturas);
+      const oldest = data?.[0]?.created_at || chatCursor;
+      setChatCursor(oldest);
+      if (data.length < 20) setChatTieneMas(false);
+      requestAnimationFrame(() => {
+        if (!container) return;
+        const newHeight = container.scrollHeight;
+        container.scrollTop = newHeight - prevHeight + prevTop;
+      });
+    } catch (e) {
+      setErrorChat(e.message);
+    } finally {
+      setCargandoMasChat(false);
+    }
+  };
+
+  const manejarEnviarMensaje = async () => {
+    if (!grupo?.id) return;
+    if (!nuevoMensaje.trim()) return;
+    setErrorChat("");
+    try {
+      const creado = await enviarMensajeGrupo({
+        grupoId: grupo.id,
+        mensaje: nuevoMensaje,
+        displayName
+      });
+      setNuevoMensaje("");
+      setMensajesChat(prev => {
+        if (prev.some(m => m.id === creado.id)) return prev;
+        return [...prev, creado];
+      });
+    } catch (e) {
+      setErrorChat(e.message);
+    }
+  };
+
   async function recargarGrupo() {
     if (!codigo) return;
     const g = await obtenerVistaPreviaPorCodigo(codigo);
@@ -284,6 +460,70 @@ export default function GrupoDetalle() {
       setCargandoGrupo(false);
     })();
   }, [codigo, userId, sesionCargada]);
+
+  useEffect(() => {
+    mensajesRef.current = mensajesChat;
+    if (tabActiva === "chat" && (chatInicialListo || isNearBottom())) {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [mensajesChat, tabActiva]);
+
+  useEffect(() => {
+    if (tabActiva !== "chat" || !chatInicialListo) return;
+    requestAnimationFrame(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: "auto" });
+      setChatInicialListo(false);
+    });
+  }, [tabActiva, chatInicialListo]);
+
+  useEffect(() => {
+    if (tabActiva !== "chat" || !grupo?.id) return;
+    cargarChat(grupo.id);
+    cargarAvataresChat();
+  }, [tabActiva, grupo?.id, userId]);
+
+  useEffect(() => {
+    if (tabActiva !== "chat" || !grupo?.id) return;
+
+    const mensajesChannel = supabase
+      .channel(`grupo-chat-${grupo.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "grupo_mensajes", filter: `grupo_id=eq.${grupo.id}` },
+        payload => {
+          const nuevo = payload.new;
+          if (!nuevo) return;
+          setMensajesChat(prev => {
+            if (prev.some(m => m.id === nuevo.id)) return prev;
+            return [...prev, nuevo];
+          });
+          if (userId && nuevo.user_id !== userId) {
+            marcarMensajesLeidos({ mensajeIds: [nuevo.id] }).catch(() => {});
+          }
+        }
+      )
+      .subscribe();
+
+    const lecturasChannel = supabase
+      .channel(`grupo-chat-reads-${grupo.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "grupo_mensaje_lecturas" },
+        payload => {
+          const nuevo = payload.new;
+          if (!nuevo) return;
+          const existe = mensajesRef.current.some(m => m.id === nuevo.mensaje_id);
+          if (!existe) return;
+          agregarLecturaLocal(nuevo.mensaje_id, nuevo.user_id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(mensajesChannel);
+      supabase.removeChannel(lecturasChannel);
+    };
+  }, [tabActiva, grupo?.id, userId]);
 
   const manejarArchivos = files => {
     const archivosValidos = Array.from(files).filter(file => {
@@ -484,6 +724,32 @@ export default function GrupoDetalle() {
     return urlData?.publicUrl || "";
   };
 
+  const cargarAvataresChat = async () => {
+    const miembros = grupo?.miembros || [];
+    if (!miembros.length) return;
+    const entries = await Promise.all(
+      miembros.map(async m => {
+        if (!m?.user_id) return [null, ""];
+        if (m.user_id === userId && avatarUrl) {
+          return [m.user_id, avatarUrl];
+        }
+        const { data: urlData } = supabase.storage
+          .from("Flux_repositorioGrupos")
+          .getPublicUrl(`avatars/${m.user_id}`);
+        const directUrl = urlData?.publicUrl || "";
+        if (directUrl) return [m.user_id, directUrl];
+        const url = await buscarAvatarPorCarpeta(m.user_id);
+        return [m.user_id, url];
+      })
+    );
+    const map = {};
+    entries.forEach(([id, url]) => {
+      if (!id) return;
+      map[id] = url || "";
+    });
+    setAvatarPorUsuario(map);
+  };
+
   const cargarPerfilMiembro = async miembro => {
     if (!miembro?.user_id) return;
     setMiembroActivo(miembro);
@@ -651,6 +917,7 @@ export default function GrupoDetalle() {
 
       <div className="group-tabs">
         <button className={`group-tab ${tabActiva === "stream" ? "active" : ""}`} onClick={() => setTabActiva("stream")}>Stream</button>
+        <button className={`group-tab ${tabActiva === "chat" ? "active" : ""}`} onClick={() => setTabActiva("chat")}>Chat</button>
         <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
         <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
         <button className={`group-tab ${tabActiva === "tareas" ? "active" : ""}`} onClick={() => setTabActiva("tareas")}>Tareas</button>
@@ -802,6 +1069,114 @@ export default function GrupoDetalle() {
               );
             })}
             {!archivosSubidos.length && <p className="no-archivos">No hay archivos subidos aún.</p>}
+          </div>
+        </div>
+      )}
+
+      {tabActiva === "chat" && (
+        <div className="group-tab-content">
+          <div className="card chat-card">
+            <div className="chat-header">
+              <strong>Chat del grupo</strong>
+            </div>
+
+            <div
+              className="chat-messages"
+              ref={chatScrollRef}
+              onScroll={e => {
+                if (e.currentTarget.scrollTop <= 10) {
+                  cargarMensajesAnteriores();
+                }
+              }}
+            >
+              {cargandoMasChat && (
+                <div className="label" style={{ textAlign: "center" }}>Cargando mensajes...</div>
+              )}
+              {mensajesChat.map(m => {
+                const esMio = m.user_id === userId;
+                const lectores = lecturasPorMensaje[m.id] || 0;
+                const otros = Math.max(totalMiembros - 1, 0);
+                const avatar = avatarPorUsuario[m.user_id] || "";
+                const inicial = (m.display_name || "U").slice(0, 1).toUpperCase();
+                const idsLectores = lecturasIdsPorMensaje[m.id] || [];
+                const nombresLectores = idsLectores
+                  .map(id => miembrosPorId.get(id) || "Usuario")
+                  .filter(Boolean);
+                const tooltipLectores = nombresLectores.length
+                  ? `Leído por: ${nombresLectores.join(", ")}`
+                  : "";
+                return (
+                  <div key={m.id} className={`chat-message ${esMio ? "own" : ""}`}>
+                    <div className="chat-avatar">
+                      {avatar ? (
+                        <img
+                          src={avatar}
+                          alt=""
+                          onError={() =>
+                            setAvatarPorUsuario(prev => ({
+                              ...prev,
+                              [m.user_id]: ""
+                            }))
+                          }
+                        />
+                      ) : (
+                        <div className="chat-avatar-fallback">{inicial}</div>
+                      )}
+                    </div>
+                    <div className="chat-message-content">
+                      <div className="chat-meta">
+                        <span className="chat-author">{esMio ? "Tú" : (m.display_name || "Usuario")}</span>
+                        <span className="chat-time">
+                          {m.created_at ? new Date(m.created_at).toLocaleString() : ""}
+                        </span>
+                      </div>
+                      <div className="chat-text">{m.mensaje}</div>
+                      {esMio && otros > 0 && (
+                        <div className="chat-read">
+                          {lectores > 0 ? (
+                            <button
+                              className="chat-read-button"
+                              data-tooltip={tooltipLectores}
+                              title={tooltipLectores}
+                              type="button"
+                            >
+                              {`Leído por ${lectores}/${otros}`}
+                            </button>
+                          ) : (
+                            "Aún no leído"
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {mensajesChat.length === 0 && !cargandoChat && (
+                <div className="label">Aún no hay mensajes en este chat.</div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {errorChat && <div className="alert" style={{ marginTop: 8 }}>{errorChat}</div>}
+
+            <div className="chat-input">
+              <textarea
+                className="input"
+                rows={3}
+                value={nuevoMensaje}
+                onChange={e => setNuevoMensaje(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    manejarEnviarMensaje();
+                  }
+                }}
+                placeholder="Escribe un mensaje para tu grupo..."
+              />
+              <button className="btn btnPrimary" onClick={manejarEnviarMensaje} disabled={!nuevoMensaje.trim()}>
+                Enviar
+              </button>
+            </div>
           </div>
         </div>
       )}
