@@ -17,6 +17,7 @@ import {
   isRepositorioFavorito
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
+import Estrellas from "../components/Estrellas"; // <--- 1. IMPORTACIÓN AÑADIDA
 import "../estilos/flux.css";
 
 export default function RepositorioPublicoDetalle() {
@@ -144,7 +145,6 @@ export default function RepositorioPublicoDetalle() {
       if (error) throw error;
       setActividad(data || []);
     } catch (e) {
-      // no bloquear la vista si no existe la tabla; mostrar vacío
       console.warn("No se pudo cargar actividad de repositorio:", e.message);
       setActividad([]);
     }
@@ -285,14 +285,15 @@ export default function RepositorioPublicoDetalle() {
     }
   }
 
-  async function manejarCalificar(event) {
+  // --- 2. FUNCIÓN MODIFICADA PARA RECIBIR EL VALOR DIRECTAMENTE DE LAS ESTRELLAS ---
+  async function manejarCalificar(valorNota) {
     if (!repo?.id) return;
     if (!userId) {
       setMensaje("Inicia sesion para calificar.");
       return;
     }
-    const valor = Number(event.target.value);
-    setMiRating(event.target.value);
+    const valor = Number(valorNota);
+    setMiRating(valorNota);
     if (!valor) return;
 
     setGuardandoRating(true);
@@ -397,28 +398,20 @@ export default function RepositorioPublicoDetalle() {
           <div className="label" style={{ marginBottom: 0 }}>
             Este repositorio es público y no está vinculado a un grupo.
           </div>
-          <div style={{ marginTop: 8 }}>
+          
+          {/* --- 3. AQUÍ ESTÁ EL CAMBIO: REEMPLAZAMOS SELECT POR ESTRELLAS --- */}
+          <div style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 10 }}>
             {userId ? (
               <>
-                <label className="label">Tu calificacion</label>
-                <select
-                  className="input"
-                  value={miRating}
-                  onChange={manejarCalificar}
-                  disabled={guardandoRating}
-                >
-                  <option value="">Selecciona (1-5)</option>
-                  {Array.from({ length: 5 }, (_, idx) => (
-                    <option key={idx + 1} value={idx + 1}>
-                      {idx + 1}
-                    </option>
-                  ))}
-                </select>
+                <Estrellas alCalificar={manejarCalificar} />
+                {guardandoRating && <p style={{fontSize:"12px", color:"#999"}}>Guardando...</p>}
               </>
             ) : (
               <div className="label">Inicia sesion para calificar.</div>
             )}
           </div>
+          {/* --------------------------------------------------------------- */}
+
           {esCreador && (
             <div style={{ marginTop: 12 }}>
               <button className="btn" onClick={manejarEliminarRepositorio}>

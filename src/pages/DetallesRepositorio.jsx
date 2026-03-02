@@ -4,6 +4,7 @@ import { listarArchivosGrupoPorId, obtenerRepositorioParaLecturaPorCodigo } from
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorGrupo } from "../utils/groupColors";
 import "../estilos/flux.css";
+import Estrellas from "../components/Estrellas";
 
 export default function DetallesRepositorio() {
   const { codigo } = useParams();
@@ -139,6 +140,10 @@ export default function DetallesRepositorio() {
           </div>
         </div>
       )}
+      {/* SECCIÓN DE CALIFICACIONES - TU TAREA */}
+      <div style={{ maxWidth: "500px", margin: "20px auto" }}>
+        <Estrellas alCalificar={(nota) => console.log("Calificación guardada localmente:", nota)} />
+      </div>
     </div>
   );
 }
