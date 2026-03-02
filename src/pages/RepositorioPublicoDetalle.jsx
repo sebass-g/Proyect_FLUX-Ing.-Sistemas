@@ -17,7 +17,8 @@ import {
   isRepositorioFavorito
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
-import Estrellas from "../components/Estrellas"; // <--- 1. IMPORTACIÓN AÑADIDA
+import Estrellas from "../components/Estrellas";
+import ModalQR from "../components/ModalQR"; // Importación del QR
 import "../estilos/flux.css";
 
 export default function RepositorioPublicoDetalle() {
@@ -43,6 +44,10 @@ export default function RepositorioPublicoDetalle() {
   const [ratingTotal, setRatingTotal] = useState(0);
   const [miRating, setMiRating] = useState("");
   const [guardandoRating, setGuardandoRating] = useState(false);
+  
+  // ESTADO NUEVO PARA EL QR
+  const [mostrarQR, setMostrarQR] = useState(false);
+
   const inputRef = useRef(null);
   const esEditor = esCreador || esColaborador;
   const [tabActiva, setTabActiva] = useState("info");
@@ -285,7 +290,6 @@ export default function RepositorioPublicoDetalle() {
     }
   }
 
-  // --- 2. FUNCIÓN MODIFICADA PARA RECIBIR EL VALOR DIRECTAMENTE DE LAS ESTRELLAS ---
   async function manejarCalificar(valorNota) {
     if (!repo?.id) return;
     if (!userId) {
@@ -364,6 +368,16 @@ export default function RepositorioPublicoDetalle() {
             <button className="btn" onClick={manejarToggleFavorito} title={isFavorito ? "Quitar favorito" : "Agregar a favoritos"}>
               {isFavorito ? "★ Favorito" : "☆ Favorito"}
             </button>
+            
+            {/* BOTÓN NUEVO PARA QR */}
+            <button 
+              className="btn" 
+              onClick={() => setMostrarQR(true)} 
+              title="Compartir código QR"
+              style={{ marginLeft: "8px" }}
+            >
+              📱 QR
+            </button>
           </div>
         </div>
       </div>
@@ -382,83 +396,81 @@ export default function RepositorioPublicoDetalle() {
 
       {tabActiva === "info" && (
         <div className="group-tab-content" style={{ marginTop: 8 }}>
-        <div className="card">
-          <strong>{repo.titulo}</strong>
-          <div className="label" style={{ marginTop: 8 }}>
-            Creador: {repo.creador_nombre || "Usuario"}
-          </div>
-          <div className="label">
-            Fecha de creación: {repo.created_at ? new Date(repo.created_at).toLocaleDateString() : "-"}
-          </div>
-          <div className="label">
-            {ratingTotal
-              ? `Calificacion promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal})`
-              : "Calificacion promedio: sin calificaciones"}
-          </div>
-          <div className="label" style={{ marginBottom: 0 }}>
-            Este repositorio es público y no está vinculado a un grupo.
-          </div>
-          
-          {/* --- 3. AQUÍ ESTÁ EL CAMBIO: REEMPLAZAMOS SELECT POR ESTRELLAS --- */}
-          <div style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 10 }}>
-            {userId ? (
-              <>
-                <Estrellas alCalificar={manejarCalificar} />
-                {guardandoRating && <p style={{fontSize:"12px", color:"#999"}}>Guardando...</p>}
-              </>
-            ) : (
-              <div className="label">Inicia sesion para calificar.</div>
-            )}
-          </div>
-          {/* --------------------------------------------------------------- */}
-
-          {esCreador && (
-            <div style={{ marginTop: 12 }}>
-              <button className="btn" onClick={manejarEliminarRepositorio}>
-                Eliminar repositorio
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginTop: 12 }}>
           <div className="card">
-            <strong>Anuncios</strong>
-            {esCreador && (
-              <div style={{ marginTop: 8 }}>
-                <textarea
-                  className="input"
-                  rows={3}
-                  value={nuevoAnuncio}
-                  onChange={e => setNuevoAnuncio(e.target.value)}
-                  placeholder="Escribe un anuncio para este repositorio público..."
-                />
-                <div style={{ marginTop: 8 }}>
-                  <button className="btn btnPrimary" onClick={publicarAnuncio}>Publicar anuncio</button>
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginTop: 12 }}>
-              {actividad.length === 0 ? (
-                <div className="label">Aún no hay anuncios.</div>
+            <strong>{repo.titulo}</strong>
+            <div className="label" style={{ marginTop: 8 }}>
+              Creador: {repo.creador_nombre || "Usuario"}
+            </div>
+            <div className="label">
+              Fecha de creación: {repo.created_at ? new Date(repo.created_at).toLocaleDateString() : "-"}
+            </div>
+            <div className="label">
+              {ratingTotal
+                ? `Calificacion promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal})`
+                : "Calificacion promedio: sin calificaciones"}
+            </div>
+            <div className="label" style={{ marginBottom: 0 }}>
+              Este repositorio es público y no está vinculado a un grupo.
+            </div>
+            
+            <div style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 10 }}>
+              {userId ? (
+                <>
+                  <Estrellas alCalificar={manejarCalificar} />
+                  {guardandoRating && <p style={{fontSize:"12px", color:"#999"}}>Guardando...</p>}
+                </>
               ) : (
-                actividad.map((a, i) => (
-                  <div key={`${a.fecha}-${i}`} className="feed-card" style={{ marginBottom: 8 }}>
-                    <div className="feed-card-header">
-                      <div className="feed-avatar">{(a.actor_id || "U").slice(0,1).toUpperCase()}</div>
-                      <div>
-                        <div className="feed-author">Anuncio</div>
-                        <div className="feed-date">{a.fecha ? new Date(a.fecha).toLocaleString() : ""}</div>
-                      </div>
-                    </div>
-                    <div className="feed-text">{`${a.mensaje || ""}`.replace(/^ANUNCIO::/, "")}</div>
-                  </div>
-                ))
+                <div className="label">Inicia sesion para calificar.</div>
               )}
             </div>
+
+            {esCreador && (
+              <div style={{ marginTop: 12 }}>
+                <button className="btn" onClick={manejarEliminarRepositorio}>
+                  Eliminar repositorio
+                </button>
+              </div>
+            )}
           </div>
-        </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="card">
+              <strong>Anuncios</strong>
+              {esCreador && (
+                <div style={{ marginTop: 8 }}>
+                  <textarea
+                    className="input"
+                    rows={3}
+                    value={nuevoAnuncio}
+                    onChange={e => setNuevoAnuncio(e.target.value)}
+                    placeholder="Escribe un anuncio para este repositorio público..."
+                  />
+                  <div style={{ marginTop: 8 }}>
+                    <button className="btn btnPrimary" onClick={publicarAnuncio}>Publicar anuncio</button>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ marginTop: 12 }}>
+                {actividad.length === 0 ? (
+                  <div className="label">Aún no hay anuncios.</div>
+                ) : (
+                  actividad.map((a, i) => (
+                    <div key={`${a.fecha}-${i}`} className="feed-card" style={{ marginBottom: 8 }}>
+                      <div className="feed-card-header">
+                        <div className="feed-avatar">{(a.actor_id || "U").slice(0,1).toUpperCase()}</div>
+                        <div>
+                          <div className="feed-author">Anuncio</div>
+                          <div className="feed-date">{a.fecha ? new Date(a.fecha).toLocaleString() : ""}</div>
+                        </div>
+                      </div>
+                      <div className="feed-text">{`${a.mensaje || ""}`.replace(/^ANUNCIO::/, "")}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -496,32 +508,32 @@ export default function RepositorioPublicoDetalle() {
             </div>
           )}
 
-        <div className="archivos-grid" style={{ marginTop: 12 }}>
-          {archivos.map((file, idx) => {
-            const fullPath = file.path;
-            const { data } = supabase.storage.from("Flux_repositorioGrupos").getPublicUrl(fullPath);
-            const nombre = file.nombre || fullPath?.split("/").pop() || "archivo";
-            const extension = nombre.split(".").pop().toLowerCase();
-            const icono = extension === "pdf" ? "📄" : extension === "docx" ? "📝" : extension === "png" ? "🖼️" : "📎";
-            return (
-              <div key={`${file.id || idx}`} className="archivo-card">
-                <a href={data.publicUrl} target="_blank" rel="noopener noreferrer" className="archivo-link">
-                  <div className="archivo-icon">{icono}</div>
-                  <div className="archivo-info">
-                    <div className="archivo-nombre">{nombre}</div>
-                    <div className="archivo-meta">{file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}</div>
-                  </div>
-                </a>
-                {esEditor && (
-                  <button className="btn" style={{ marginTop: 8 }} onClick={() => manejarEliminarArchivo(file)}>
-                    Eliminar archivo
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          {!archivos.length && <p className="no-archivos">No hay archivos subidos aún.</p>}
-        </div>
+          <div className="archivos-grid" style={{ marginTop: 12 }}>
+            {archivos.map((file, idx) => {
+              const fullPath = file.path;
+              const { data } = supabase.storage.from("Flux_repositorioGrupos").getPublicUrl(fullPath);
+              const nombre = file.nombre || fullPath?.split("/").pop() || "archivo";
+              const extension = nombre.split(".").pop().toLowerCase();
+              const icono = extension === "pdf" ? "📄" : extension === "docx" ? "📝" : extension === "png" ? "🖼️" : "📎";
+              return (
+                <div key={`${file.id || idx}`} className="archivo-card">
+                  <a href={data.publicUrl} target="_blank" rel="noopener noreferrer" className="archivo-link">
+                    <div className="archivo-icon">{icono}</div>
+                    <div className="archivo-info">
+                      <div className="archivo-nombre">{nombre}</div>
+                      <div className="archivo-meta">{file.created_at ? new Date(file.created_at).toLocaleDateString() : ""}</div>
+                    </div>
+                  </a>
+                  {esEditor && (
+                    <button className="btn" style={{ marginTop: 8 }} onClick={() => manejarEliminarArchivo(file)}>
+                      Eliminar archivo
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {!archivos.length && <p className="no-archivos">No hay archivos subidos aún.</p>}
+          </div>
         </div>
       )}
 
@@ -587,6 +599,14 @@ export default function RepositorioPublicoDetalle() {
           </div>
         </div>
       )}
+
+      {/* COMPONENTE MODAL DE QR AÑADIDO AL FINAL */}
+      <ModalQR 
+        isOpen={mostrarQR} 
+        onClose={() => setMostrarQR(false)} 
+        url={window.location.href} 
+        titulo={repo ? repo.titulo : "Escanear para unirse"} 
+      />
     </div>
   );
 }
