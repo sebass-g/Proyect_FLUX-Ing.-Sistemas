@@ -74,6 +74,19 @@ export default function Estrellas({ alCalificar }) {
           </span>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="btn"
+        style={{ marginTop: "8px" }}
+        onClick={() => {
+          setRating(0);
+          setHover(0);
+          if (alCalificar) alCalificar(0);
+        }}
+      >
+        Calificar con 0
+      </button>
       
       <p style={{ marginTop: "8px", fontSize: "14px", color: "#666" }}>
         {rating > 0 

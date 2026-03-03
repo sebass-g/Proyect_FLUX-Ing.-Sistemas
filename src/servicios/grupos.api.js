@@ -509,6 +509,7 @@ export async function buscarRepositoriosPublicos(
   let admins = [];
   let archivos = [];
   let ratings = [];
+  let ratingsGrupos = [];
 
   if (esGuest) {
     const [
@@ -552,15 +553,26 @@ export async function buscarRepositoriosPublicos(
     archivos = archivosData || [];
   }
 
-  const reposPublicosIds = (reposPublicos || []).map(r => r.id).filter(Boolean);
-  if (reposPublicosIds.length) {
+  const idsRatingReposPublicos = (reposPublicos || []).map(r => r.id).filter(Boolean);
+  if (idsRatingReposPublicos.length) {
     const { data: ratingsData, error: ratingsError } = await supabase
       .from("ratings")
       .select("repo_id, rating")
-      .in("repo_id", reposPublicosIds)
+      .in("repo_id", idsRatingReposPublicos)
       .limit(5000);
     if (ratingsError) throw ratingsError;
     ratings = ratingsData || [];
+  }
+
+  const idsGruposPublicos = (grupos || []).map(g => g.id).filter(Boolean);
+  if (idsGruposPublicos.length) {
+    const { data: ratingsGruposData, error: ratingsGruposError } = await supabase
+      .from("ratings_grupos")
+      .select("grupo_id, user_id, rating")
+      .in("grupo_id", idsGruposPublicos)
+      .limit(5000);
+    if (ratingsGruposError) throw ratingsGruposError;
+    ratingsGrupos = ratingsGruposData || [];
   }
 
   const adminPorGrupo = new Map((admins || []).map(a => [a.grupo_id, a.display_name]));
@@ -569,8 +581,11 @@ export async function buscarRepositoriosPublicos(
     countArchivosPorGrupo.set(a.grupo_id, (countArchivosPorGrupo.get(a.grupo_id) || 0) + 1);
   }
 
+  const ratingGrupoPorId = obtenerPromediosRatingGrupos(ratingsGrupos);
+
   const resultadosGrupos = (grupos || [])
     .map(g => ({
+      ...(ratingGrupoPorId.get(g.id) || { ratingPromedio: 0, ratingTotal: 0 }),
       tipo: "grupo",
       id: g.id,
       nombre: g.nombre,
@@ -587,6 +602,7 @@ export async function buscarRepositoriosPublicos(
       const textoNormalizado = `${nombreNorm} ${adminNorm} ${codigoNorm}`.trim();
       const textoSinEspacios = textoNormalizado.replace(/\s/g, "");
       const termSinEspacios = termNorm.replace(/\s/g, "");
+      if (minRating && (Number(g.ratingPromedio) || 0) < minRating) return false;
 
       if (!termTokens.length) return true;
       return (
@@ -639,6 +655,29 @@ function obtenerPromedioRating({ ratings, repositorioId }) {
   const suma = lista.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
   const total = lista.length;
   return { ratingPromedio: suma / total, ratingTotal: total };
+}
+
+function obtenerPromediosRatingGrupos(rows = []) {
+  const acumuladoPorGrupo = new Map();
+  for (const row of rows || []) {
+    const grupoId = row?.grupo_id;
+    const valor = Number(row?.rating);
+    if (!grupoId) continue;
+    if (!Number.isFinite(valor)) continue;
+    const actual = acumuladoPorGrupo.get(grupoId) || { suma: 0, total: 0 };
+    actual.suma += valor;
+    actual.total += 1;
+    acumuladoPorGrupo.set(grupoId, actual);
+  }
+
+  const resultado = new Map();
+  for (const [grupoId, stats] of acumuladoPorGrupo.entries()) {
+    resultado.set(grupoId, {
+      ratingPromedio: stats.total ? stats.suma / stats.total : 0,
+      ratingTotal: stats.total || 0
+    });
+  }
+  return resultado;
 }
 
 export async function crearRepositorioPublico({ titulo, creadorNombre = "", colorId = "" }) {
@@ -720,10 +759,11 @@ export async function obtenerPromedioRepositorioPublico({ repositorioId }) {
 
 export async function guardarCalificacionRepositorioPublico({ repositorioId, rating }) {
   const repoId = `${repositorioId || ""}`.trim();
-  const valor = Number(rating);
+  const valorCrudo = Number(rating);
+  const valor = Math.round(valorCrudo * 2) / 2;
   if (!repoId) throw new Error("Repositorio invalido.");
-  if (!Number.isFinite(valor) || valor < 1 || valor > 5) {
-    throw new Error("La calificacion debe estar entre 1 y 5.");
+  if (!Number.isFinite(valorCrudo) || valor < 0 || valor > 5) {
+    throw new Error("La calificacion debe estar entre 0 y 5.");
   }
 
   const {
@@ -734,13 +774,120 @@ export async function guardarCalificacionRepositorioPublico({ repositorioId, rat
   const user = session?.user;
   if (!user) throw new Error("No hay sesion activa.");
 
-  const { error } = await supabase
+  const { data: existente, error: errorExistente } = await supabase
     .from("ratings")
-    .upsert(
-      { repo_id: repoId, user_id: user.id, rating: valor },
-      { onConflict: "repo_id,user_id" }
-    );
+    .select("id")
+    .eq("repo_id", repoId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (errorExistente) throw errorExistente;
+
+  if (existente?.id) {
+    const { error: updateError } = await supabase
+      .from("ratings")
+      .update({ rating: valor })
+      .eq("id", existente.id);
+    if (updateError) throw updateError;
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("ratings")
+    .insert({ repo_id: repoId, user_id: user.id, rating: valor });
+  if (insertError) throw insertError;
+}
+
+export async function obtenerMiCalificacionGrupoPublico({ grupoId }) {
+  const id = `${grupoId || ""}`.trim();
+  if (!id) return null;
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("ratings_grupos")
+    .select("rating")
+    .eq("grupo_id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
   if (error) throw error;
+  return data?.rating ?? null;
+}
+
+export async function obtenerPromedioGrupoPublico({ grupoId }) {
+  const id = `${grupoId || ""}`.trim();
+  if (!id) return { ratingPromedio: 0, ratingTotal: 0 };
+
+  const { data, error } = await supabase
+    .from("ratings_grupos")
+    .select("rating", { count: "exact" })
+    .eq("grupo_id", id)
+    .limit(5000);
+  if (error) throw error;
+
+  const lista = data || [];
+  if (!lista.length) return { ratingPromedio: 0, ratingTotal: 0 };
+  const suma = lista.reduce((acc, r) => acc + (Number(r.rating) || 0), 0);
+  return { ratingPromedio: suma / lista.length, ratingTotal: lista.length };
+}
+
+export async function guardarCalificacionGrupoPublico({ grupoId, rating }) {
+  const id = `${grupoId || ""}`.trim();
+  const valorCrudo = Number(rating);
+  const valor = Math.round(valorCrudo * 2) / 2;
+
+  if (!id) throw new Error("Repositorio invalido.");
+  if (!Number.isFinite(valorCrudo) || valor < 0 || valor > 5) {
+    throw new Error("La calificacion debe estar entre 0 y 5.");
+  }
+
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const user = session?.user;
+  if (!user) throw new Error("No hay sesion activa.");
+
+  const { data: grupo, error: grupoError } = await supabase
+    .from("grupos")
+    .select("id, es_publico")
+    .eq("id", id)
+    .maybeSingle();
+  if (grupoError) throw grupoError;
+  if (!grupo) throw new Error("Repositorio no encontrado.");
+  if (!grupo.es_publico) throw new Error("Solo se puede calificar repositorios públicos.");
+
+  const { data: existente, error: existenteError } = await supabase
+    .from("ratings_grupos")
+    .select("id")
+    .eq("grupo_id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (existenteError) throw existenteError;
+
+  if (existente?.id) {
+    const { error: updateError } = await supabase
+      .from("ratings_grupos")
+      .update({ rating: valor })
+      .eq("id", existente.id);
+    if (updateError) throw updateError;
+    return;
+  }
+
+  const { error: insertError } = await supabase
+    .from("ratings_grupos")
+    .insert({
+      grupo_id: id,
+      user_id: user.id,
+      rating: valor
+    });
+  if (insertError) throw insertError;
 }
 
 async function asegurarPropietarioRepositorioPublico({ repositorioId, userId }) {

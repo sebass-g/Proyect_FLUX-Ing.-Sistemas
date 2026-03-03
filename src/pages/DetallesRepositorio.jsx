@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { listarArchivosGrupoPorId, obtenerRepositorioParaLecturaPorCodigo } from "../servicios/grupos.api";
+import {
+  guardarCalificacionGrupoPublico,
+  listarArchivosGrupoPorId,
+  obtenerMiCalificacionGrupoPublico,
+  obtenerPromedioGrupoPublico,
+  obtenerRepositorioParaLecturaPorCodigo
+} from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import { obtenerColorEntidad } from "../utils/groupColors";
 import "../estilos/flux.css";
@@ -11,10 +17,33 @@ export default function DetallesRepositorio() {
   const navigate = useNavigate();
   const [grupo, setGrupo] = useState(null);
   const [archivos, setArchivos] = useState([]);
-  const [tab, setTab] = useState("archivos");
+  const [tab, setTab] = useState("info");
   const [avatarUrl, setAvatarUrl] = useState("");
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
+  const [userId, setUserId] = useState(null);
+  const [ratingPromedio, setRatingPromedio] = useState(0);
+  const [ratingTotal, setRatingTotal] = useState(0);
+  const [miRating, setMiRating] = useState("");
+  const [guardandoRating, setGuardandoRating] = useState(false);
+  const [mensajeRating, setMensajeRating] = useState("");
+
+  async function cargarRatings(repoId) {
+    if (!repoId) {
+      setRatingPromedio(0);
+      setRatingTotal(0);
+      setMiRating("");
+      return;
+    }
+
+    const [promedio, miCalificacion] = await Promise.all([
+      obtenerPromedioGrupoPublico({ grupoId: repoId }),
+      obtenerMiCalificacionGrupoPublico({ grupoId: repoId })
+    ]);
+    setRatingPromedio(promedio?.ratingPromedio || 0);
+    setRatingTotal(promedio?.ratingTotal || 0);
+    setMiRating(miCalificacion !== null && miCalificacion !== undefined ? String(miCalificacion) : "");
+  }
 
   useEffect(() => {
     (async () => {
@@ -26,8 +55,18 @@ export default function DetallesRepositorio() {
         if (g?.id) {
           const files = await listarArchivosGrupoPorId({ grupoId: g.id });
           setArchivos(files);
+          if (g.esPublico) {
+            await cargarRatings(g.id);
+          } else {
+            setRatingPromedio(0);
+            setRatingTotal(0);
+            setMiRating("");
+          }
         } else {
           setArchivos([]);
+          setRatingPromedio(0);
+          setRatingTotal(0);
+          setMiRating("");
         }
       } catch (e) {
         setError(e.message);
@@ -37,10 +76,33 @@ export default function DetallesRepositorio() {
       const {
         data: { session }
       } = await supabase.auth.getSession();
+      setUserId(session?.user?.id || null);
       setAvatarUrl(session?.user?.user_metadata?.avatar_url?.trim() || "");
       setCargando(false);
     })();
   }, [codigo]);
+
+  async function manejarCalificar(valorNota) {
+    if (!grupo?.id || !grupo?.esPublico) return;
+    if (!userId) {
+      setMensajeRating("Inicia sesión para calificar.");
+      return;
+    }
+    const valor = Number(valorNota);
+    if (!Number.isFinite(valor)) return;
+
+    setGuardandoRating(true);
+    setMensajeRating("");
+    try {
+      await guardarCalificacionGrupoPublico({ grupoId: grupo.id, rating: valor });
+      await cargarRatings(grupo.id);
+      setMensajeRating("Calificación guardada.");
+    } catch (e) {
+      setMensajeRating(`Error al guardar calificación: ${e.message}`);
+    } finally {
+      setGuardandoRating(false);
+    }
+  }
 
   if (cargando) {
     return (
@@ -72,6 +134,12 @@ export default function DetallesRepositorio() {
     identificador: grupo.codigo || grupo.nombre || grupo.id || "",
     colorId: grupo.color_id || ""
   });
+  const anuncios = (grupo?.actividad || [])
+    .filter(a => `${a.mensaje || ""}`.startsWith("ANUNCIO::"))
+    .map(a => ({
+      ...a,
+      texto: `${a.mensaje || ""}`.replace("ANUNCIO::", "")
+    }));
 
   return (
     <div className="container">
@@ -93,6 +161,9 @@ export default function DetallesRepositorio() {
       </div>
 
       <div className="group-tabs">
+        <button className={`group-tab ${tab === "info" ? "active" : ""}`} onClick={() => setTab("info")}>
+          Info
+        </button>
         <button className={`group-tab ${tab === "archivos" ? "active" : ""}`} onClick={() => setTab("archivos")}>
           Archivos
         </button>
@@ -100,6 +171,63 @@ export default function DetallesRepositorio() {
           People
         </button>
       </div>
+
+      {tab === "info" && (
+        <div className="group-tab-content" style={{ marginTop: 8 }}>
+          <div className="card">
+            <strong>{grupo.nombre}</strong>
+            <div className="label" style={{ marginTop: 8 }}>Código: {grupo.codigo}</div>
+            <div className="label">Visibilidad: {grupo.esPublico ? "Público" : "Privado"}</div>
+            {grupo.esPublico ? (
+              <>
+                <div className="label">
+                  {ratingTotal
+                    ? `Calificación promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal})`
+                    : "Calificación promedio: sin calificaciones"}
+                </div>
+                <div style={{ marginTop: 12, borderTop: "1px solid #eee", paddingTop: 10 }}>
+                  {userId ? (
+                    <>
+                      <Estrellas alCalificar={manejarCalificar} />
+                      <div className="label">Tu calificación actual: {miRating || "sin calificar"}</div>
+                      {guardandoRating && <div className="label">Guardando calificación...</div>}
+                      {mensajeRating && <div className="label">{mensajeRating}</div>}
+                    </>
+                  ) : (
+                    <div className="label">Inicia sesión para calificar.</div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="label">Este repositorio no acepta calificaciones porque es privado.</div>
+            )}
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div className="card">
+              <strong>Anuncios</strong>
+              <div style={{ marginTop: 12 }}>
+                {anuncios.length === 0 ? (
+                  <div className="label">Aún no hay anuncios.</div>
+                ) : (
+                  anuncios.map((a, i) => (
+                    <div key={`${a.fecha}-${i}`} className="feed-card" style={{ marginBottom: 8 }}>
+                      <div className="feed-card-header">
+                        <div className="feed-avatar">A</div>
+                        <div>
+                          <div className="feed-author">Anuncio</div>
+                          <div className="feed-date">{a.fecha ? new Date(a.fecha).toLocaleString() : ""}</div>
+                        </div>
+                      </div>
+                      <div className="feed-text">{a.texto}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {tab === "archivos" && (
         <div className="group-tab-content">
@@ -145,10 +273,6 @@ export default function DetallesRepositorio() {
           </div>
         </div>
       )}
-      {/* SECCIÓN DE CALIFICACIONES - TU TAREA */}
-      <div style={{ maxWidth: "500px", margin: "20px auto" }}>
-        <Estrellas alCalificar={(nota) => console.log("Calificación guardada localmente:", nota)} />
-      </div>
     </div>
   );
 }

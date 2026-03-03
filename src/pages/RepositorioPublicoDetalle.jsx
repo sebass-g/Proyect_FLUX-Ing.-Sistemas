@@ -320,7 +320,7 @@ export default function RepositorioPublicoDetalle() {
     }
     const valor = Number(valorNota);
     setMiRating(valorNota);
-    if (!valor) return;
+    if (!Number.isFinite(valor)) return;
 
     setGuardandoRating(true);
     try {

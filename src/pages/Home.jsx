@@ -1122,6 +1122,11 @@ export default function Home() {
                           <small className="repo-suggest-meta">
                             {repo.archivosCount} archivo(s)
                           </small>
+                          <small className="repo-suggest-meta">
+                            {repo.ratingTotal
+                              ? `Calificación: ${Number(repo.ratingPromedio || 0).toFixed(1)}/5 (${repo.ratingTotal})`
+                              : "Sin calificaciones"}
+                          </small>
                         </>
                       ) : (
                         <>
