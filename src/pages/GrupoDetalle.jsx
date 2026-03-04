@@ -23,8 +23,10 @@ import {
   crearTareaGrupo,
   toggleTareaGrupo,
   editarTareaGrupo,
-  eliminarTareaGrupo
+  eliminarTareaGrupo,
+  listarArchivosGrupoPorId
 } from "../servicios/grupos.api";
+import { generarResumenRepositorio } from "../servicios/ia.api";
 
 export default function GrupoDetalle() {
   const { codigo } = useParams();
@@ -77,6 +79,13 @@ export default function GrupoDetalle() {
   const [horarioMiembro, setHorarioMiembro] = useState([]);
   const [cargandoPerfil, setCargandoPerfil] = useState(false);
   const [errorPerfil, setErrorPerfil] = useState("");
+
+  // ── IA tab ──────────────────────────────────────────────
+  const [iaArchivos, setIaArchivos] = useState([]);
+  const [iaCargandoArchivos, setIaCargandoArchivos] = useState(false);
+  const [iaGenerando, setIaGenerando] = useState(false);
+  const [iaResumen, setIaResumen] = useState("");
+  const [iaError, setIaError] = useState("");
 
   const DIAS = [
     { value: 1, label: "Lun" },
@@ -539,6 +548,50 @@ export default function GrupoDetalle() {
     };
   }, [tabActiva, grupo?.id, userId]);
 
+  useEffect(() => {
+    if (tabActiva !== "ia" || !grupo?.id) return;
+    const cargar = async () => {
+      setIaCargandoArchivos(true);
+      setIaError("");
+      try {
+        const data = await listarArchivosGrupoPorId({ grupoId: grupo.id });
+        setIaArchivos(data);
+      } catch (e) {
+        setIaError("No se pudieron cargar los archivos: " + e.message);
+      } finally {
+        setIaCargandoArchivos(false);
+      }
+    };
+    cargar();
+  }, [tabActiva, grupo?.id]);
+
+  async function manejarGenerarResumenGrupo() {
+    setIaError("");
+    setIaResumen("");
+    setIaGenerando(true);
+    try {
+      const resumen = await generarResumenRepositorio({
+        nombreRepo: grupo.nombre,
+        archivos: iaArchivos
+      });
+      setIaResumen(resumen);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await supabase.from("ia_resumenes").insert({
+          user_id: session.user.id,
+          repositorio_tipo: "grupo",
+          repositorio_id: grupo.id,
+          resumen
+        });
+      }
+    } catch (e) {
+      setIaError(e.message);
+    } finally {
+      setIaGenerando(false);
+    }
+  }
+
   const manejarArchivos = files => {
     const archivosValidos = Array.from(files).filter(file => {
       const tipos = [
@@ -960,6 +1013,7 @@ export default function GrupoDetalle() {
         <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
         <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
         <button className={`group-tab ${tabActiva === "tareas" ? "active" : ""}`} onClick={() => setTabActiva("tareas")}>Tareas</button>
+        <button className={`group-tab ${tabActiva === "ia" ? "active" : ""}`} onClick={() => setTabActiva("ia")}>✨ IA</button>
       </div>
 
       {tabActiva === "stream" && (
@@ -1286,12 +1340,72 @@ export default function GrupoDetalle() {
           <TaskMaster
           esAdmin={esAdmin}
           tareas={tareas}
-          totalMiembros={grupo?.miembros?.length || 0} 
+          totalMiembros={grupo?.miembros?.length || 0}
           onAgregarTarea={handleAgregarTarea}
           onToggleTarea={handleToggleTarea}
-          onEditarTarea={handleEditarTarea} 
+          onEditarTarea={handleEditarTarea}
           onBorrarTarea={handleBorrarTarea}
         />
+        </div>
+      )}
+
+      {tabActiva === "ia" && (
+        <div className="group-tab-content">
+          <div className="card">
+            <strong>Resumidor IA – {grupo.nombre}</strong>
+            <p className="label" style={{ marginTop: 6 }}>
+              Genera un resumen inteligente de los archivos de este grupo.
+            </p>
+
+            {iaCargandoArchivos && (
+              <p className="label" style={{ marginTop: 8 }}>Cargando archivos...</p>
+            )}
+
+            {!iaCargandoArchivos && (
+              <div style={{ marginTop: 10 }}>
+                <p className="label">
+                  <strong>Archivos ({iaArchivos.length})</strong>
+                </p>
+                {iaArchivos.length === 0 ? (
+                  <p className="label">Este grupo no tiene archivos aún.</p>
+                ) : (
+                  <ul className="ia-lista" style={{ marginTop: 6 }}>
+                    {iaArchivos.map((a, i) => (
+                      <li key={a.id || i} className="ia-lista-item">
+                        <span className="ia-lista-dot" />
+                        <span>{a.nombre}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {iaError && (
+              <div className="alert alert-error" style={{ marginTop: 12 }}>
+                {iaError}
+              </div>
+            )}
+
+            {!iaCargandoArchivos && (
+              <div style={{ marginTop: 12 }}>
+                <button
+                  className="btn btnPrimary"
+                  onClick={manejarGenerarResumenGrupo}
+                  disabled={iaGenerando}
+                >
+                  {iaGenerando ? "Generando resumen..." : "✨ Generar resumen con IA"}
+                </button>
+              </div>
+            )}
+
+            {iaResumen && (
+              <div className="ia-resultado" style={{ marginTop: 16 }}>
+                <strong style={{ display: "block", marginBottom: 8 }}>Resumen generado</strong>
+                <pre className="ia-pre">{iaResumen}</pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

@@ -20,6 +20,7 @@ import {
 import { supabase } from "../config/supabaseClient";
 import Estrellas from "../components/Estrellas";
 import ModalQR from "../components/ModalQR"; // Importación del QR
+import { generarResumenRepositorio } from "../servicios/ia.api";
 import {
   PALETA_BANNERS,
   guardarColorGuardado,
@@ -60,6 +61,11 @@ export default function RepositorioPublicoDetalle() {
   const esEditor = esCreador || esColaborador;
   const [tabActiva, setTabActiva] = useState("info");
 
+  // ── IA ──────────────────────────────────────────────────
+  const [iaGenerando, setIaGenerando] = useState(false);
+  const [iaResumen, setIaResumen] = useState("");
+  const [iaError, setIaError] = useState("");
+
   async function cargarArchivos(repoId) {
     if (!repoId) {
       setArchivos([]);
@@ -67,6 +73,33 @@ export default function RepositorioPublicoDetalle() {
     }
     const data = await listarArchivosRepositorioPublico({ repositorioId: repoId });
     setArchivos(data);
+  }
+
+  async function manejarResumirConIA() {
+    setIaError("");
+    setIaResumen("");
+    setIaGenerando(true);
+    try {
+      const resumen = await generarResumenRepositorio({
+        nombreRepo: repo.titulo,
+        archivos
+      });
+      setIaResumen(resumen);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await supabase.from("ia_resumenes").insert({
+          user_id: session.user.id,
+          repositorio_tipo: "publico",
+          repositorio_id: repo.id,
+          resumen
+        });
+      }
+    } catch (e) {
+      setIaError(e.message);
+    } finally {
+      setIaGenerando(false);
+    }
   }
 
   async function cargarRatings(repoId) {
@@ -468,6 +501,28 @@ export default function RepositorioPublicoDetalle() {
                 </>
               ) : (
                 <div className="label">Inicia sesion para calificar.</div>
+              )}
+            </div>
+
+            {/* Botón IA */}
+            <div style={{ marginTop: 16, borderTop: "1px solid #eee", paddingTop: 14 }}>
+              <button
+                className="btn btnPrimary"
+                onClick={manejarResumirConIA}
+                disabled={iaGenerando}
+              >
+                {iaGenerando ? "Generando resumen..." : "✨ Resumir con IA"}
+              </button>
+              {iaError && (
+                <div className="alert alert-error" style={{ marginTop: 10 }}>
+                  {iaError}
+                </div>
+              )}
+              {iaResumen && (
+                <div className="ia-resultado" style={{ marginTop: 14 }}>
+                  <strong style={{ display: "block", marginBottom: 8 }}>Resumen IA</strong>
+                  <pre className="ia-pre">{iaResumen}</pre>
+                </div>
               )}
             </div>
 

@@ -854,7 +854,7 @@ export default function Home() {
         </div>
       )}
 
-      <footer className="home-footer">
+      <footer className="home-footer" style={{ justifyContent: "space-evenly" }}>
         <button
           className="home-footer-btn"
           aria-label="Buscar grupos"
@@ -868,6 +868,23 @@ export default function Home() {
             <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2" />
             <path d="M20 20L16.8 16.8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
+        </button>
+
+        <button
+          className="home-footer-btn"
+          aria-label="Asistente IA"
+          onClick={() => {
+            if (!tieneSesion) {
+              setError("Inicia sesión para acceder al asistente IA.");
+              return;
+            }
+            navigate("/ia");
+          }}
+        >
+          <div className="home-footer-ia">
+            <span style={{ fontSize: 18, lineHeight: 1 }}>✨</span>
+            <span>IA</span>
+          </div>
         </button>
 
         <button

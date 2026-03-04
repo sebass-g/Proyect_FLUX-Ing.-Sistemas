@@ -13,6 +13,7 @@ import GrupoDetalle from "./pages/GrupoDetalle";
 import EditarPerfil from "./pages/EditarPerfil";
 import DetallesRepositorio from "./pages/DetallesRepositorio";
 import RepositorioPublicoDetalle from "./pages/RepositorioPublicoDetalle";
+import AsistenteIA from "./pages/AsistenteIA";
 
 // Bloquea rutas privadas: si no hay sesión, manda al login
 function RequireAuth({ session, loading, children }) {
@@ -139,6 +140,14 @@ export default function App() {
         path="/repos-publicos/:id"
         element={
           <RepositorioPublicoDetalle />
+        }
+      />
+      <Route
+        path="/ia"
+        element={
+          <RequireAuth session={session} loading={loadingSession}>
+            <AsistenteIA />
+          </RequireAuth>
         }
       />
       {/* Redirecciones por defecto */}
