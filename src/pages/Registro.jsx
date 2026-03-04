@@ -329,6 +329,17 @@ function Registro() {
           {esLogin ? 'Crear Usuario Nuevo' : 'Iniciar Sesión'}
         </button>
 
+        {esLogin && (
+          <button
+            type="button"
+            className="btn"
+            style={{ marginTop: '12px' }}
+            onClick={() => navigate('/auth/forgot')}
+          >
+            Olvidé mi contraseña
+          </button>
+        )}
+
         <button
           type="button"
           className="btn"

@@ -6,6 +6,8 @@ import "./estilos/flux.css"; // Importamos los estilos globales de FLUX
 
 // Importamos las páginas
 import Registro from "./pages/Registro";
+import OlvideContrasena from "./pages/OlvideContrasena";
+import ResetPassword from "./pages/ResetPassword";
 import Home from "./pages/Home";
 import GrupoDetalle from "./pages/GrupoDetalle";
 import EditarPerfil from "./pages/EditarPerfil";
@@ -93,6 +95,18 @@ export default function App() {
             <Registro />
           </GuestOnly>
         }
+      />
+      <Route
+        path="/auth/forgot"
+        element={
+          <GuestOnly session={session} loading={loadingSession}>
+            <OlvideContrasena />
+          </GuestOnly>
+        }
+      />
+      <Route
+        path="/auth/reset"
+        element={<ResetPassword />}
       />
       <Route
         path="/grupos"
