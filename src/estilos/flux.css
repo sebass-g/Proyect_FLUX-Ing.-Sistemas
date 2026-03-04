@@ -2055,3 +2055,313 @@ select.input {
     font-size: 32px;
   }
 }
+
+/* ── IA: footer button label ── */
+.home-footer-ia {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--texto);
+}
+
+/* ── IA: lista de ítems ── */
+.ia-lista {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ia-lista-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.ia-lista-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primario);
+  flex-shrink: 0;
+}
+
+/* ── IA: horario grid ── */
+.ia-horario-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ia-bloque {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: rgba(255, 155, 81, 0.1);
+  border: 1px solid rgba(255, 155, 81, 0.3);
+  border-radius: var(--radio-sm);
+  font-size: 13px;
+}
+
+.ia-bloque-dia {
+  font-weight: 700;
+  color: var(--primario);
+}
+
+.ia-bloque-hora {
+  color: var(--texto);
+}
+
+.ia-bloque-tipo {
+  color: var(--texto);
+  opacity: 0.6;
+  font-size: 11px;
+}
+
+/* ── IA: resultado (pre-formatted text) ── */
+.ia-resultado {
+  background: rgba(255, 155, 81, 0.05);
+  border: 1px solid rgba(255, 155, 81, 0.2);
+  border-radius: var(--radio-md);
+  padding: var(--space-4);
+}
+
+.ia-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--texto);
+  margin: 0;
+}
+
+.ia-pre-small {
+  font-size: 12px;
+}
+
+.ia-pre-chat {
+  font-size: 14px;
+}
+
+/* ── IA: conversaciones guardadas ── */
+.ia-chat-sesiones-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ia-chat-nuevo-btn {
+  width: auto;
+  margin-top: 0;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.ia-chat-sesiones-lista {
+  display: grid;
+  gap: 8px;
+}
+
+.ia-chat-sesion-btn {
+  width: 100%;
+  border: 1px solid rgba(37, 52, 63, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: var(--radio-sm);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  color: var(--texto);
+  cursor: pointer;
+}
+
+.ia-chat-sesion-btn.active {
+  border-color: rgba(255, 155, 81, 0.6);
+  background: rgba(255, 155, 81, 0.12);
+}
+
+/* ── IA: resumen guardado (details/summary) ── */
+.ia-resumen-item {
+  border-bottom: 1px solid rgba(37, 52, 63, 0.08);
+  padding: 8px 0;
+}
+
+.ia-resumen-item:last-child {
+  border-bottom: none;
+}
+
+.ia-resumen-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--texto);
+  list-style: none;
+  padding: 4px 0;
+  gap: 12px;
+}
+
+.ia-resumen-summary::-webkit-details-marker {
+  display: none;
+}
+
+.ia-resumen-summary::before {
+  content: "▶";
+  font-size: 10px;
+  color: var(--primario);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+details[open] .ia-resumen-summary::before {
+  transform: rotate(90deg);
+}
+
+/* ── IA: chat messages ── */
+.ia-chat-messages {
+  min-height: 200px;
+  max-height: 400px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.ia-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: var(--space-6) var(--space-4);
+  color: var(--texto);
+  opacity: 0.5;
+  font-size: 14px;
+  text-align: center;
+}
+
+.ia-chat-empty span {
+  font-size: 28px;
+  opacity: 1;
+}
+
+.ia-chat-bubble {
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radio-md);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ia-bubble-user {
+  align-self: flex-end;
+  background: var(--primario);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.ia-bubble-user .ia-pre {
+  color: #fff;
+}
+
+.ia-bubble-ia {
+  align-self: flex-start;
+  background: rgba(37, 52, 63, 0.06);
+  color: var(--texto);
+  border-bottom-left-radius: 4px;
+}
+
+.ia-typing {
+  font-style: italic;
+  opacity: 0.6;
+  font-size: 13px;
+}
+
+/* ── IA: ajustes para vista tipo celular ── */
+@media (max-width: 640px) {
+  .group-tabs {
+    flex-wrap: wrap;
+    gap: 6px;
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .group-tab {
+    flex: 1 1 calc(50% - 6px);
+    min-height: 38px;
+    text-align: center;
+    background: rgba(37, 52, 63, 0.06);
+  }
+
+  .group-tab.active {
+    background: rgba(255, 155, 81, 0.22);
+  }
+
+  .group-tab-content .card {
+    padding: var(--space-4);
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .ia-chat-messages {
+    max-height: 48vh;
+    min-height: 220px;
+  }
+
+  .ia-chat-bubble {
+    max-width: 92%;
+    padding: 9px 12px;
+  }
+
+  .chat-input .btn {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .ia-chat-sesiones-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ia-chat-nuevo-btn {
+    width: 100%;
+  }
+
+  .ia-chat-sesion-btn {
+    padding: 9px 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+}
+
+/* ── Alert helper ── */
+.alert {
+  padding: 10px 14px;
+  border-radius: var(--radio-sm);
+  font-size: 13px;
+}
+
+.alert-error {
+  background: rgba(220, 53, 69, 0.08);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: #c0392b;
+}
