@@ -1,5 +1,3 @@
-
-
 const SYSTEM_PROMPT = `
 Eres FLUX IA, un asistente académico inteligente para estudiantes
 de la Universidad Metropolitana (Unimet).
@@ -7,8 +5,7 @@ de la Universidad Metropolitana (Unimet).
 Tu rol es ayudar a los estudiantes a:
 1. Organizar su tiempo de estudio según su horario semanal disponible
 2. Gestionar y priorizar sus tareas académicas pendientes
-3. Resumir el contenido de sus repositorios de estudio
-4. Responder preguntas sobre sus materias y recursos disponibles
+3. Responder preguntas sobre sus materias y recursos disponibles
 
 Reglas que debes seguir siempre:
 - Responde siempre en español
@@ -17,13 +14,12 @@ Reglas que debes seguir siempre:
 - No te refieras a ti como "PROYECTOFLUX" ni en tercera persona
 - Usa formato con saltos de línea y emojis para hacer las respuestas más legibles
 - Cuando generes un plan de estudio, siempre indica el día, hora y duración sugerida
-- Cuando resumas un repositorio, lista los temas principales y da recomendaciones concretas
-- Si el estudiante no tiene tareas o archivos, sugiérele cómo aprovechar mejor la plataforma
+- Si el estudiante no tiene tareas, sugiérele cómo aprovechar mejor la plataforma
 - Nunca inventes información sobre materias o contenidos que no te hayan dado como contexto
 - Trata siempre al estudiante de "tú" y con un tono amigable pero profesional
 `;
 
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-1.5-flash";
 
 function getApiKey() {
   const key = import.meta.env.VITE_GEMINI_API_KEY;
@@ -73,7 +69,7 @@ async function llamarGemini(userPrompt) {
 // ─────────────────────────────────────────────────────────
 // Tab 1 – Planificador
 // ─────────────────────────────────────────────────────────
-export async function generarPlanEstudio({ tareas, horario }) {
+export async function generarPlanEstudio({ tareas, horario, restricciones }) {
   const DIAS = ["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"];
 
   const tareasTexto =
@@ -99,13 +95,18 @@ export async function generarPlanEstudio({ tareas, horario }) {
           .join("\n")
       : "El estudiante no tiene horario definido.";
 
+  // 🟢 Agregamos las restricciones al prompt si el usuario las escribió
+  const restriccionesTexto = restricciones && restricciones.trim() !== "" 
+    ? `\n🛑 RESTRICCIONES Y PREFERENCIAS DEL ESTUDIANTE:\n"${restricciones}"\nPor favor, adapta el plan respetando estrictamente estas indicaciones.`
+    : "";
+
   const prompt = `Soy un estudiante universitario de la Unimet y necesito un plan de estudio personalizado.
 
 📋 MIS TAREAS PENDIENTES:
 ${tareasTexto}
 
 🗓️ MI HORARIO SEMANAL (bloques de clase):
-${horarioTexto}
+${horarioTexto}${restriccionesTexto}
 
 Por favor genera un plan de estudio detallado que incluya:
 1. Para cada tarea pendiente: qué día y en qué bloque de tiempo libre (antes o después de clases) debería estudiarla, con justificación.
@@ -119,41 +120,7 @@ Organiza la respuesta por días de la semana.`;
 }
 
 // ─────────────────────────────────────────────────────────
-// Tab 2 – Resumidor de Repositorio
-// ─────────────────────────────────────────────────────────
-export async function generarResumenRepositorio({ nombreRepo, archivos }) {
-  const archivosTexto =
-    archivos.length > 0
-      ? archivos
-          .map((a, i) => {
-            const nombre = a.nombre || a.name || `Archivo ${i + 1}`;
-            const tipo = a.mime_type || a.content_type || "archivo";
-            const fecha = a.created_at ? new Date(a.created_at).toLocaleDateString() : "";
-            return `${i + 1}. ${nombre} (${tipo}${fecha ? ", subido el " + fecha : ""})`;
-          })
-          .join("\n")
-      : "El repositorio está vacío, no tiene archivos.";
-
-  const prompt = `Analiza el siguiente repositorio de estudio universitario:
-
-📁 REPOSITORIO: "${nombreRepo}"
-
-📄 ARCHIVOS DISPONIBLES:
-${archivosTexto}
-
-Por favor genera:
-1. 📌 Resumen: ¿Qué temas o contenidos cubre este repositorio basándote en los nombres de los archivos?
-2. 📚 Orden de estudio recomendado: ¿En qué orden deberían revisarse los archivos y por qué?
-3. ⏱️ Estimación de tiempo: ¿Cuánto tiempo aproximado tomaría estudiar todo el material?
-4. 💡 Recomendaciones: Tips concretos para aprovechar mejor este repositorio.
-
-Si el repositorio está vacío, sugiere qué tipos de archivos sería útil agregar según el nombre del repositorio.`;
-
-  return llamarGemini(prompt);
-}
-
-// ─────────────────────────────────────────────────────────
-// Tab 3 – Chat libre
+// Tab 2 – Chat libre
 // ─────────────────────────────────────────────────────────
 export async function chatConIA({ mensajes, contextoUsuario }) {
   const { nombreUsuario, grupos, horario, tareasPendientes } = contextoUsuario;
@@ -165,7 +132,6 @@ export async function chatConIA({ mensajes, contextoUsuario }) {
     `📋 Tareas pendientes: ${tareasPendientes?.length > 0 ? tareasPendientes.join(", ") : "Sin tareas pendientes"}`
   ].join("\n");
 
-  // Historial (todos los mensajes menos el último, que es el actual)
   const historialTexto = mensajes
     .slice(0, -1)
     .map(m => `${m.role === "user" ? "Estudiante" : "FLUX IA"}: ${m.text}`)
