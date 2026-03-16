@@ -1,3 +1,5 @@
+import { validarNombreSinMalasPalabras } from "../utils/nameModeration";
+
 const CLAVE_STORAGE = "flux_grupos_mock";
 
 function cargarGrupos() {
@@ -20,6 +22,7 @@ function generarCodigo(longitud = 6) {
 export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
   const grupos = cargarGrupos();
   const userId = crypto.randomUUID();
+  const nombreLimpio = validarNombreSinMalasPalabras(nombreGrupo, "El nombre del grupo");
 
   let codigo = generarCodigo();
   while (grupos.some(g => g.codigo === codigo)) {
@@ -28,7 +31,7 @@ export async function crearGrupo({ nombreGrupo, nombreUsuario }) {
 
   const grupo = {
     id: crypto.randomUUID(),
-    nombre: nombreGrupo.trim(),
+    nombre: nombreLimpio,
     codigo,
     creadorId: userId,
     miembros: [{ id: crypto.randomUUID(), nombre: nombreUsuario, user_id: userId, is_admin: true }],

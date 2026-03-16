@@ -373,6 +373,12 @@ export default function Home() {
     };
   }, [menuGrupoAbiertoId]);
 
+  useEffect(() => {
+    if (!accionAbierta && !grupoEditando) {
+      setError("");
+    }
+  }, [accionAbierta, grupoEditando]);
+
   async function manejarCambioCodigo(valor) {
     const codigo = valor.toUpperCase();
     setCodigoIngreso(codigo);
@@ -391,12 +397,13 @@ export default function Home() {
     if (!nombreUsuario.trim()) return setError("No se encontró tu display name.");
     if (!nombreGrupo.trim()) return setError("Ingrese el nombre del grupo.");
 
-    const grupo = await crearGrupo({
-      nombreGrupo,
-      nombreUsuario,
-      esPublico: esPublicoNuevoGrupo,
-      colorId: colorNuevoGrupo
-    });
+    try {
+      const grupo = await crearGrupo({
+        nombreGrupo,
+        nombreUsuario,
+        esPublico: esPublicoNuevoGrupo,
+        colorId: colorNuevoGrupo
+      });
 
       setNombreGrupo("");
       setEsPublicoNuevoGrupo(false);
@@ -405,6 +412,9 @@ export default function Home() {
       setFabAbierto(false);
       await cargarGrupos();
       navigate(`/grupos/${grupo.codigo}`);
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function manejarCrearRepoPublico() {
@@ -928,7 +938,10 @@ export default function Home() {
       </footer>
 
       {accionAbierta && (
-        <div className="modal-overlay" onClick={() => setAccionAbierta("")}>
+        <div className="modal-overlay" onClick={() => {
+          setError("");
+          setAccionAbierta("");
+        }}>
           <div className="modal-content action-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h3>
@@ -941,6 +954,8 @@ export default function Home() {
               <button className="modal-close" onClick={() => setAccionAbierta("")}>✕</button>
             </div>
             <div className="modal-body">
+              {error && <div className="alert" style={{ marginBottom: 12 }}>{error}</div>}
+
               {accionAbierta === "crear" && (
                 <>
                   <label className="label">Nombre del grupo</label>
@@ -1038,6 +1053,8 @@ export default function Home() {
               </button>
             </div>
             <div className="modal-body">
+              {error && <div className="alert" style={{ marginBottom: 12 }}>{error}</div>}
+
               <label className="label">Nombre del grupo</label>
               <input
                 className="input"
@@ -1178,7 +1195,7 @@ export default function Home() {
         </div>
       )}
 
-      {error && <div className="alert">{error}</div>}
+      {error && !accionAbierta && !grupoEditando && <div className="alert">{error}</div>}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { supabase } from "../config/supabaseClient";
+import { validarNombreSinMalasPalabras } from "../utils/nameModeration";
 
 function normalizarTexto(valor = "") {
   return `${valor}`
@@ -90,7 +91,7 @@ export async function crearGrupo({ nombreGrupo, nombreUsuario, esPublico = false
   if (!user) throw new Error("No hay sesion activa.");
 
   const codigo = await generarCodigoUnico();
-  const nombre = nombreGrupo.trim();
+  const nombre = validarNombreSinMalasPalabras(nombreGrupo, "El nombre del grupo");
   const displayName = nombreUsuario.trim();
 
   const { data: grupo, error: errorGrupo } = await supabase
@@ -238,7 +239,7 @@ export async function actualizarNombreGrupo({
   actorNombre = "",
   nombreAnterior = ""
 }) {
-  const nuevoNombre = nombre.trim();
+  const nuevoNombre = validarNombreSinMalasPalabras(nombre, "El nombre del grupo");
   const { error } = await supabase
     .from("grupos")
     .update({ nombre: nuevoNombre })
@@ -777,8 +778,7 @@ export async function crearRepositorioPublico({ titulo, creadorNombre = "", colo
   if (!user) throw new Error("No hay sesion activa.");
 
   const nombre = `${creadorNombre || user.user_metadata?.display_name || "Usuario"}`.trim();
-  const tituloLimpio = `${titulo || ""}`.trim();
-  if (!tituloLimpio) throw new Error("El titulo es obligatorio.");
+  const tituloLimpio = validarNombreSinMalasPalabras(titulo, "El titulo del repositorio");
 
   const { data, error } = await supabase
     .from("repositorios_publicos")

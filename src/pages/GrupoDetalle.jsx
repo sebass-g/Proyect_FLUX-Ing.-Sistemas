@@ -720,15 +720,20 @@ export default function GrupoDetalle() {
   async function manejarGuardarNombre() {
     if (!grupo) return;
     if (!nuevoNombreGrupo.trim()) return;
-    await actualizarNombreGrupo({
-      grupoId: grupo.id,
-      nombre: nuevoNombreGrupo,
-      actorId: userId,
-      actorNombre: displayName,
-      nombreAnterior: grupo.nombre
-    });
-    setGrupo(prev => ({ ...prev, nombre: nuevoNombreGrupo.trim() }));
-    await recargarGrupo();
+    setError("");
+    try {
+      await actualizarNombreGrupo({
+        grupoId: grupo.id,
+        nombre: nuevoNombreGrupo,
+        actorId: userId,
+        actorNombre: displayName,
+        nombreAnterior: grupo.nombre
+      });
+      setGrupo(prev => ({ ...prev, nombre: nuevoNombreGrupo.trim() }));
+      await recargarGrupo();
+    } catch (e) {
+      setError(e.message);
+    }
   }
 
   async function manejarCambiarVisibilidad(esPublico) {
