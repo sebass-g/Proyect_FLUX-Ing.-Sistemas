@@ -13,8 +13,7 @@ import {
 } from "../servicios/grupos.api";
 import {
   listarRepositoriosFavoritos,
-  listarRepositoriosCreados,
-  obtenerTotalesAdminHome
+  listarRepositoriosCreados
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import logoFlux from "../assets/logo-flux.png";
@@ -78,13 +77,6 @@ export default function Home() {
   const [buscandoRepos, setBuscandoRepos] = useState(false);
   const [favoritosRepos, setFavoritosRepos] = useState([]);
   const [misReposCreados, setMisReposCreados] = useState([]);
-  const [totalesAdmin, setTotalesAdmin] = useState({
-    totalGrupos: 0,
-    totalRepositorios: 0,
-    totalUsuarios: 0
-  });
-  const [filtroFechaMetricas, setFiltroFechaMetricas] = useState("all");
-  const [cargandoTotalesAdmin, setCargandoTotalesAdmin] = useState(false);
   const [esFundadorVista, setEsFundadorVista] = useState(false);
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
   const [grupoEditando, setGrupoEditando] = useState(null);
@@ -96,16 +88,6 @@ export default function Home() {
     FECHA_OPTIONS.find(o => o.value === filtroFechaRepos)?.label || "Sin filtro de fecha";
   const ratingFiltroLabel =
     RATING_OPTIONS.find(o => o.value === filtroRatingRepos)?.label || "Sin filtro de puntuación";
-  const fechaMetricasLabel =
-    FECHA_OPTIONS.find(o => o.value === filtroFechaMetricas)?.label || "Sin filtro de fecha";
-  const maxTotalAdmin = useMemo(
-    () => Math.max(totalesAdmin.totalGrupos, totalesAdmin.totalRepositorios, totalesAdmin.totalUsuarios, 1),
-    [totalesAdmin]
-  );
-  const mitadEscalaAdmin = useMemo(() => Math.round(maxTotalAdmin / 2), [maxTotalAdmin]);
-  const altoBarraRepos = Math.max((totalesAdmin.totalRepositorios / maxTotalAdmin) * 100, 10);
-  const altoBarraGrupos = Math.max((totalesAdmin.totalGrupos / maxTotalAdmin) * 100, 10);
-  const altoBarraUsuarios = Math.max((totalesAdmin.totalUsuarios / maxTotalAdmin) * 100, 10);
 
   const resumenHorario = useMemo(() => {
     if (!horario.length) return "Sin horario";
@@ -193,20 +175,6 @@ export default function Home() {
       setMisReposCreados([]);
     }
   }
-
-  async function cargarTotalesAdminPanel() {
-    try {
-      setCargandoTotalesAdmin(true);
-      const totales = await obtenerTotalesAdminHome({ fechaFiltro: filtroFechaMetricas });
-      setTotalesAdmin(totales);
-    } catch (e) {
-      console.warn("No se pudieron cargar los totales del panel admin:", e.message);
-    } finally {
-      setCargandoTotalesAdmin(false);
-    }
-  }
-
-  
 
   useEffect(() => {
     let isMounted = true;
@@ -420,37 +388,6 @@ export default function Home() {
   }, [menuGrupoAbiertoId]);
 
   useEffect(() => {
-    if (!tieneSesion || !esFundadorVista) return;
-    cargarTotalesAdminPanel();
-  }, [tieneSesion, esFundadorVista, filtroFechaMetricas]);
-
-  useEffect(() => {
-    if (!tieneSesion || !esFundadorVista) return;
-
-    const channel = supabase
-      .channel(`admin-resumen-home-${userId || "anon"}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "grupos" },
-        () => {
-          cargarTotalesAdminPanel();
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "repositorios_publicos" },
-        () => {
-          cargarTotalesAdminPanel();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [tieneSesion, esFundadorVista, userId]);
-
-  useEffect(() => {
     if (!accionAbierta && !grupoEditando) {
       setError("");
     }
@@ -607,106 +544,6 @@ export default function Home() {
           <img src={logoFlux} alt="FLUX" className="brand-logo-img brand-logo-small" />
         </div>
       </div>
-
-      {tieneSesion && esFundadorVista && (
-        <div className="card admin-stats-card" style={{ marginBottom: 12 }}>
-          <div className="admin-stats-head">
-            <strong>Panel administrativo</strong>
-            <span className="admin-stats-caption">Estado general de la plataforma</span>
-          </div>
-
-          <div className="admin-stats-filter-wrap">
-            <label className="label admin-stats-filter-label">Rango de fechas</label>
-            <select
-              className="input admin-stats-filter-select"
-              value={filtroFechaMetricas}
-              onChange={e => setFiltroFechaMetricas(e.target.value)}
-            >
-              {FECHA_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {cargandoTotalesAdmin ? (
-            <div className="label" style={{ marginBottom: 0 }}>Cargando métricas...</div>
-          ) : (
-            <>
-              <div className="admin-stats-grid">
-                <div className="admin-stat-tile">
-                  <div className="admin-stat-top">
-                    <span className="admin-stat-label">Repositorios</span>
-                    <span className="admin-stat-value">{totalesAdmin.totalRepositorios}</span>
-                  </div>
-                </div>
-
-                <div className="admin-stat-tile">
-                  <div className="admin-stat-top">
-                    <span className="admin-stat-label">Grupos</span>
-                    <span className="admin-stat-value">{totalesAdmin.totalGrupos}</span>
-                  </div>
-                </div>
-
-                <div className="admin-stat-tile">
-                  <div className="admin-stat-top">
-                    <span className="admin-stat-label">Usuarios</span>
-                    <span className="admin-stat-value">{totalesAdmin.totalUsuarios}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="admin-bars-chart" role="img" aria-label={`Gráfico de barras (${fechaMetricasLabel})`}>
-                <div className="admin-bars-body">
-                  <div className="admin-y-axis" aria-hidden="true">
-                    <span>{maxTotalAdmin}</span>
-                    <span>{mitadEscalaAdmin}</span>
-                    <span>0</span>
-                  </div>
-
-                  <div className="admin-bars-plot">
-                    <div className="admin-bars-col">
-                      <div className="admin-bars-bar-wrap">
-                        <div
-                          className="admin-bars-bar repos"
-                          style={{ height: `${altoBarraRepos}%` }}
-                        />
-                      </div>
-                      <div className="admin-bars-label">Repos</div>
-                      <div className="admin-bars-value">{totalesAdmin.totalRepositorios}</div>
-                    </div>
-
-                    <div className="admin-bars-col">
-                      <div className="admin-bars-bar-wrap">
-                        <div
-                          className="admin-bars-bar grupos"
-                          style={{ height: `${altoBarraGrupos}%` }}
-                        />
-                      </div>
-                      <div className="admin-bars-label">Grupos</div>
-                      <div className="admin-bars-value">{totalesAdmin.totalGrupos}</div>
-                    </div>
-
-                    <div className="admin-bars-col">
-                      <div className="admin-bars-bar-wrap">
-                        <div
-                          className="admin-bars-bar usuarios"
-                          style={{ height: `${altoBarraUsuarios}%` }}
-                        />
-                      </div>
-                      <div className="admin-bars-label">Usuarios</div>
-                      <div className="admin-bars-value">{totalesAdmin.totalUsuarios}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="label" style={{ marginBottom: 0 }}>
-                Mostrando métricas: {fechaMetricasLabel}
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {misReposCreados && misReposCreados.length > 0 && (
         <div className="card" style={{ marginBottom: 12 }}>
@@ -1004,6 +841,18 @@ export default function Home() {
               )
             ) : (
               <div className="drawer-horario">Disponible al iniciar sesión</div>
+            )}
+
+            {tieneSesion && esFundadorVista && (
+              <button
+                className="drawer-item drawer-metricas-btn"
+                onClick={() => {
+                  setMenuAbierto(false);
+                  navigate("/metricas");
+                }}
+              >
+                Ver metricas
+              </button>
             )}
           </div>
         </aside>
