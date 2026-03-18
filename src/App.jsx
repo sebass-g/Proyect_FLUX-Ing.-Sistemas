@@ -14,6 +14,7 @@ import EditarPerfil from "./pages/EditarPerfil";
 import DetallesRepositorio from "./pages/DetallesRepositorio";
 import RepositorioPublicoDetalle from "./pages/RepositorioPublicoDetalle";
 import AsistenteIA from "./pages/AsistenteIA";
+import MetricasFundador from "./pages/MetricasFundador";
 
 // Bloquea rutas privadas: si no hay sesión, manda al login
 function RequireAuth({ session, loading, children }) {
@@ -147,6 +148,14 @@ export default function App() {
         element={
           <RequireAuth session={session} loading={loadingSession}>
             <AsistenteIA />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/metricas"
+        element={
+          <RequireAuth session={session} loading={loadingSession}>
+            <MetricasFundador />
           </RequireAuth>
         }
       />
