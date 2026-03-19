@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import {
   eliminarRepositorioPublico,
   eliminarArchivoRepositorioPublico,
@@ -19,7 +19,7 @@ import {
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import Estrellas from "../components/Estrellas";
-import ModalQR from "../components/ModalQR"; // Importación del QR
+import ModalQR from "../components/ModalQR"; 
 import { generarResumenRepositorio } from "../servicios/ia.api";
 import {
   PALETA_BANNERS,
@@ -32,6 +32,7 @@ import "../estilos/flux.css";
 export default function RepositorioPublicoDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation(); // <- Aquí atrapamos la URL de React
   const [repo, setRepo] = useState(null);
   const [archivos, setArchivos] = useState([]);
   const [isFavorito, setIsFavorito] = useState(false);
@@ -54,7 +55,16 @@ export default function RepositorioPublicoDetalle() {
   const [guardandoRating, setGuardandoRating] = useState(false);
   const [colorRepoSeleccionado, setColorRepoSeleccionado] = useState(PALETA_BANNERS[0].id);
   
-  // ESTADOS PARA EL QR Y LA INVITACIÓN
+  // ESTADOS PARA IA Y PREVIEWS (De Enrique)
+  const [iaGenerando, setIaGenerando] = useState(false);
+  const [iaError, setIaError] = useState("");
+  const [iaResumen, setIaResumen] = useState("");
+  const [mostrarPreview, setMostrarPreview] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewType, setPreviewType] = useState("");
+  const [previewNombre, setPreviewNombre] = useState("");
+
+  // ESTADOS PARA EL QR Y LA INVITACIÓN (Tuyos)
   const [mostrarQR, setMostrarQR] = useState(false);
   const [mostrarPopUpUnirse, setMostrarPopUpUnirse] = useState(false);
 
@@ -62,13 +72,14 @@ export default function RepositorioPublicoDetalle() {
   const esEditor = esCreador || esColaborador;
   const [tabActiva, setTabActiva] = useState("info");
 
-  // EFECTO: Detectar si el usuario escaneó el QR (?invitacion=true)
+  // EFECTO ARREGLADO: Detectar si el usuario escaneó el QR (?invitacion=true)
   useEffect(() => {
-    const parametros = new URLSearchParams(window.location.search);
+    // Usamos location.search en lugar de window.location para que React no se lo salte
+    const parametros = new URLSearchParams(location.search);
     if (parametros.get("invitacion") === "true") {
       setMostrarPopUpUnirse(true);
     }
-  }, []);
+  }, [location]); // <- Dependemos de location para que se ejecute si cambia
 
   async function cargarArchivos(repoId) {
     if (!repoId) {
@@ -220,6 +231,17 @@ export default function RepositorioPublicoDetalle() {
     setArchivosSeleccionados(archivosValidos);
   };
 
+  const manejarDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const manejarDrop = (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files) {
+      manejarArchivos(e.dataTransfer.files);
+    }
+  };
+
   async function manejarSubirArchivos() {
     if (!repo?.id || !esEditor || !archivosSeleccionados.length) return;
     setSubiendo(true);
@@ -252,7 +274,6 @@ export default function RepositorioPublicoDetalle() {
   }
 
   function abrirPreview(url, extension, nombre) {
-    console.log("abrirPreview called", { url, extension, nombre });
     setPreviewUrl(url);
     setPreviewType(extension === "pdf" ? "pdf" : "image");
     setPreviewNombre(nombre || "");
@@ -299,17 +320,17 @@ export default function RepositorioPublicoDetalle() {
 
       if (error && error.code !== '23505') throw error;
 
-      // ACCIONES DE ÉXITO:
       setMostrarPopUpUnirse(false); 
-      window.history.replaceState(null, "", window.location.pathname); // Limpiar URL
-      await cargarColaboradores(repo.id, userId); // Refrescar permisos
-      setTabActiva("archivos"); // Redirigir a archivos automáticamente
+      // Limpiamos la URL al terminar de unirse
+      window.history.replaceState(null, "", location.pathname); 
+      await cargarColaboradores(repo.id, userId); 
+      setTabActiva("archivos"); 
       setMensajeColaboradores("¡Te has unido exitosamente!");
 
     } catch (e) {
       alert(`Aviso: ${e.message}`);
       setMostrarPopUpUnirse(false);
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(null, "", location.pathname);
     }
   }
 
@@ -322,6 +343,38 @@ export default function RepositorioPublicoDetalle() {
       await cargarRatings(repo.id);
     } finally {
       setGuardandoRating(false);
+    }
+  }
+
+  async function manejarToggleFavorito() {
+    if (!repo?.id) return;
+    try {
+      await toggleFavoritoRepositorio(repo.id);
+      setIsFavorito(!isFavorito);
+    } catch (error) {
+      console.error("Error al togglear favorito:", error);
+    }
+  }
+
+  async function manejarEliminarRepositorio() {
+    if (!repo?.id || !esCreador) return;
+    if (window.confirm("¿Seguro que deseas eliminar este repositorio?")) {
+      try {
+        await eliminarRepositorioPublico(repo.id);
+        navigate("/grupos");
+      } catch (error) {
+        alert("Error al eliminar: " + error.message);
+      }
+    }
+  }
+
+  async function manejarGuardarColorRepositorio() {
+    if (!repo?.id || !esCreador) return;
+    try {
+      await actualizarColorRepositorioPublico({ repositorioId: repo.id, colorId: colorRepoSeleccionado });
+      alert("Color guardado exitosamente");
+    } catch (error) {
+      alert("Error al actualizar color: " + error.message);
     }
   }
 
@@ -338,7 +391,7 @@ export default function RepositorioPublicoDetalle() {
   return (
     <div className="container">
       {/* Banner Superior */}
-      <div className="group-banner" style={{ "--banner-a": "#6c757d", "--banner-b": "#343a40" }}>
+      <div className="group-banner" style={{ "--banner-a": colorRepo?.a || "#6c757d", "--banner-b": colorRepo?.b || "#343a40" }}>
         <div className="group-banner-content group-banner-single">
           <button className="btn arrow-back group-back-btn" onClick={() => navigate("/grupos")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" style={{width:20}}><path d="M15 6L9 12L15 18" /></svg>
@@ -347,17 +400,20 @@ export default function RepositorioPublicoDetalle() {
             <div className="group-banner-title">{repo.titulo}</div>
             <div className="group-banner-subtitle">Público · {repo.creador_nombre}</div>
           </div>
-<<<<<<< HEAD
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn" onClick={() => setMostrarQR(true)}>📱 QR</button>
-=======
 
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button className="btn" onClick={() => setMostrarQR(true)}>📱 QR</button>
             <button className="btn" onClick={manejarToggleFavorito} title={isFavorito ? "Quitar favorito" : "Agregar a favoritos"}>
+              {isFavorito ? "⭐" : "☆"}
             </button>
-            
-        <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
-        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
+          </div>
+        </div>
+
+        <div className="group-tabs-container" style={{ display: 'flex', gap: '10px', padding: '0 20px', marginTop: '10px' }}>
+          <button className={`group-tab ${tabActiva === "info" ? "active" : ""}`} onClick={() => setTabActiva("info")}>Info</button>
+          <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
+          <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
+        </div>
       </div>
 
       {/* Contenido Dinámico */}
@@ -365,12 +421,6 @@ export default function RepositorioPublicoDetalle() {
         <div className="group-tab-content">
           <div className="card">
             <strong>{repo.titulo}</strong>
-<<<<<<< HEAD
-            <p className="label">Promedio: {Number(ratingPromedio).toFixed(1)}/5 ({ratingTotal} votos)</p>
-            <div style={{ marginTop: 20 }}>
-              <Estrellas alCalificar={manejarCalificar} />
-              {guardandoRating && <p style={{fontSize:12}}>Guardando...</p>}
-=======
             <div className="label" style={{ marginTop: 8 }}>
               Creador: {repo.creador_nombre || "Usuario"}
             </div>
@@ -379,8 +429,8 @@ export default function RepositorioPublicoDetalle() {
             </div>
             <div className="label">
               {ratingTotal
-                ? `Calificacion promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal})`
-                : "Calificacion promedio: sin calificaciones"}
+                ? `Calificación promedio: ${Number(ratingPromedio || 0).toFixed(1)}/5 (${ratingTotal} votos)`
+                : "Calificación promedio: sin calificaciones"}
             </div>
             <div className="label" style={{ marginBottom: 0 }}>
               Este repositorio es público y no está vinculado a un grupo.
@@ -393,7 +443,7 @@ export default function RepositorioPublicoDetalle() {
                   {guardandoRating && <p style={{fontSize:"12px", color:"#999"}}>Guardando...</p>}
                 </>
               ) : (
-                <div className="label">Inicia sesion para calificar.</div>
+                <div className="label">Inicia sesión para calificar.</div>
               )}
             </div>
 
@@ -442,7 +492,7 @@ export default function RepositorioPublicoDetalle() {
                     />
                   ))}
                 </div>
-                <button className="btn btnPrimary" onClick={manejarGuardarColorRepositorio}>
+                <button className="btn btnPrimary" onClick={manejarGuardarColorRepositorio} style={{marginTop: 10}}>
                   Guardar color
                 </button>
               </div>
@@ -485,7 +535,6 @@ export default function RepositorioPublicoDetalle() {
                   ))
                 )}
               </div>
->>>>>>> efc0b23ac3f1c8a1c1d25c77f72cc5fa40a070ba
             </div>
           </div>
         </div>
@@ -494,11 +543,6 @@ export default function RepositorioPublicoDetalle() {
       {tabActiva === "archivos" && (
         <div className="group-tab-content">
           {esEditor && (
-<<<<<<< HEAD
-            <div className="card repo-card">
-              <div className="drop-area" onClick={() => inputRef.current?.click()}>
-                {archivosSeleccionados.length > 0 ? `${archivosSeleccionados.length} listos` : "Toca para subir archivos"}
-=======
             <div className="card repo-card" style={{ maxWidth: "none", marginTop: 12 }}>
               <strong className="repo-title">Subir archivos</strong>
               <p className="label repo-subtitle">Máximo 20MB por archivo</p>
@@ -512,7 +556,6 @@ export default function RepositorioPublicoDetalle() {
                   </p>
                   <small className="label">PDF, DOCX, PNG hasta 20MB</small>
                 </div>
->>>>>>> efc0b23ac3f1c8a1c1d25c77f72cc5fa40a070ba
               </div>
               <input ref={inputRef} type="file" multiple hidden onChange={e => manejarArchivos(e.target.files)} />
               <button className="btn btnPrimary" onClick={manejarSubirArchivos} disabled={subiendo} style={{marginTop:10}}>
@@ -520,13 +563,6 @@ export default function RepositorioPublicoDetalle() {
               </button>
             </div>
           )}
-<<<<<<< HEAD
-          <div className="archivos-grid">
-            {archivos.map(file => (
-              <div key={file.id} className="archivo-card">
-                <div className="archivo-info">
-                  <span className="archivo-nombre">{file.nombre}</span>
-=======
 
           <div className="archivos-grid" style={{ marginTop: 12 }}>
             {archivos.map((file, idx) => {
@@ -563,11 +599,9 @@ export default function RepositorioPublicoDetalle() {
                       </button>
                     )}
                   </div>
->>>>>>> efc0b23ac3f1c8a1c1d25c77f72cc5fa40a070ba
                 </div>
-                {esEditor && <button className="btn" onClick={() => manejarEliminarArchivo(file)}>Eliminar</button>}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -587,10 +621,7 @@ export default function RepositorioPublicoDetalle() {
         </div>
       )}
 
-<<<<<<< HEAD
-      {/* Modales */}
-=======
-      {/* COMPONENTE MODAL DE QR AÑADIDO AL FINAL */}
+      {/* COMPONENTE MODAL DE PREVIEW */}
       {mostrarPreview && (
         <div
           className="preview-overlay"
@@ -639,11 +670,12 @@ export default function RepositorioPublicoDetalle() {
         </div>
       )}
 
->>>>>>> efc0b23ac3f1c8a1c1d25c77f72cc5fa40a070ba
+      {/* COMPONENTE MODAL DE QR Y POPUP INVITACIÓN */}
       <ModalQR 
         isOpen={mostrarQR} 
         onClose={() => setMostrarQR(false)} 
-        url={`${window.location.origin}${window.location.pathname}?invitacion=true`} 
+        // Aquí también usamos location.pathname para más seguridad
+        url={`${window.location.origin}${location.pathname}?invitacion=true`} 
         titulo={repo.titulo} 
       />
 
@@ -653,7 +685,7 @@ export default function RepositorioPublicoDetalle() {
             <h3>¡Invitación Recibida!</h3>
             <p>¿Quieres unirte como colaborador a <b>{repo.titulo}</b>?</p>
             <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 20 }}>
-              <button onClick={() => { setMostrarPopUpUnirse(false); window.history.replaceState(null, "", window.location.pathname); }} className="btn">Cancelar</button>
+              <button onClick={() => { setMostrarPopUpUnirse(false); window.history.replaceState(null, "", location.pathname); }} className="btn">Cancelar</button>
               <button onClick={manejarUnirsePorInvitacion} className="btn btnPrimary" style={{background: "#007bff", color: "white"}}>Sí, unirme</button>
             </div>
           </div>
