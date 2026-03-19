@@ -401,19 +401,19 @@ export default function RepositorioPublicoDetalle() {
             <div className="group-banner-subtitle">Público · {repo.creador_nombre}</div>
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="group-banner-actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button className="btn" onClick={() => setMostrarQR(true)}>📱 QR</button>
             <button className="btn" onClick={manejarToggleFavorito} title={isFavorito ? "Quitar favorito" : "Agregar a favoritos"}>
               {isFavorito ? "⭐" : "☆"}
             </button>
           </div>
         </div>
+      </div>
 
-        <div className="group-tabs-container" style={{ display: 'flex', gap: '10px', padding: '0 20px', marginTop: '10px' }}>
-          <button className={`group-tab ${tabActiva === "info" ? "active" : ""}`} onClick={() => setTabActiva("info")}>Info</button>
-          <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
-          <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
-        </div>
+      <div className="group-tabs">
+        <button className={`group-tab ${tabActiva === "info" ? "active" : ""}`} onClick={() => setTabActiva("info")}>Info</button>
+        <button className={`group-tab ${tabActiva === "archivos" ? "active" : ""}`} onClick={() => setTabActiva("archivos")}>Archivos</button>
+        <button className={`group-tab ${tabActiva === "people" ? "active" : ""}`} onClick={() => setTabActiva("people")}>Personas</button>
       </div>
 
       {/* Contenido Dinámico */}
