@@ -541,7 +541,8 @@ export default function Home() {
           ☰
         </button>
         <div className="home-header-title-wrap">
-          <img src={logoFlux} alt="FLUX" className="brand-logo-img brand-logo-small" />
+                    <div className="home-header-title">FLUX</div>
+          <div className="logoDot home-header-dot" />
         </div>
       </div>
 
