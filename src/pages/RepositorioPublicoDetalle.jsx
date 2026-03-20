@@ -59,11 +59,6 @@ export default function RepositorioPublicoDetalle() {
   const [iaGenerando, setIaGenerando] = useState(false);
   const [iaError, setIaError] = useState("");
   const [iaResumen, setIaResumen] = useState("");
-  const [mostrarPreview, setMostrarPreview] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [previewType, setPreviewType] = useState("");
-  const [previewNombre, setPreviewNombre] = useState("");
-
   // ESTADOS PARA EL QR Y LA INVITACIÓN (Tuyos)
   const [mostrarQR, setMostrarQR] = useState(false);
   const [mostrarPopUpUnirse, setMostrarPopUpUnirse] = useState(false);
@@ -271,20 +266,6 @@ export default function RepositorioPublicoDetalle() {
     } catch (e) {
       setMensaje(`Error: ${e.message}`);
     }
-  }
-
-  function abrirPreview(url, extension, nombre) {
-    setPreviewUrl(url);
-    setPreviewType(extension === "pdf" ? "pdf" : "image");
-    setPreviewNombre(nombre || "");
-    setMostrarPreview(true);
-  }
-
-  function cerrarPreview() {
-    setMostrarPreview(false);
-    setPreviewUrl("");
-    setPreviewType("");
-    setPreviewNombre("");
   }
 
   async function manejarAgregarColaborador() {
@@ -589,15 +570,6 @@ export default function RepositorioPublicoDetalle() {
                       </button>
                     )}
 
-                    {(extension === "pdf" || extension === "png") && (
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => abrirPreview(pubUrl, extension, nombre)}
-                      >
-                        Previsualizar
-                      </button>
-                    )}
                   </div>
                 </div>
               );
@@ -617,55 +589,6 @@ export default function RepositorioPublicoDetalle() {
                 </li>
               ))}
             </ul>
-          </div>
-        </div>
-      )}
-
-      {/* COMPONENTE MODAL DE PREVIEW */}
-      {mostrarPreview && (
-        <div
-          className="preview-overlay"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1200,
-            padding: 20
-          }}
-          onClick={cerrarPreview}
-        >
-          <div
-            className="preview-content"
-            style={{
-              background: "#fff",
-              borderRadius: 8,
-              maxWidth: "100%",
-              width: "900px",
-              maxHeight: "90%",
-              overflow: "auto",
-              position: "relative",
-              padding: 12
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={cerrarPreview}
-              style={{ position: "absolute", right: 8, top: 8 }}
-              className="btn"
-            >
-              Cerrar
-            </button>
-            <div style={{ marginTop: 32 }}>
-              <strong style={{ display: "block", marginBottom: 8 }}>{previewNombre}</strong>
-              {previewType === "pdf" ? (
-                <iframe src={previewUrl} title={previewNombre} style={{ width: "100%", height: "70vh", border: "none" }} />
-              ) : (
-                <img src={previewUrl} alt={previewNombre} style={{ maxWidth: "100%", maxHeight: "70vh" }} />
-              )}
-            </div>
           </div>
         </div>
       )}
