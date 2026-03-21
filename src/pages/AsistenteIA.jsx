@@ -445,10 +445,14 @@ export default function AsistenteIA() {
   return (
     <div className="container">
       {/* Topbar */}
-      <div className="topbar" style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+      <div className="topbar">
+        <div className="brand">
+          <img src={logoFlux} alt="FLUX" className="brand-logo-img brand-logo-small" />
+          <div className="brandSubtitle">Asistente IA</div>
+        </div>
         <button
           className="btn arrow-back"
-          style={{ marginTop: 0, flexShrink: 0 }}
+          style={{ marginTop: 0 }}
           onClick={() => navigate(-1)}
           aria-label="Atrás"
         >
@@ -456,10 +460,6 @@ export default function AsistenteIA() {
             <path d="M19 12H5M5 12L12 19M5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <div className="brand" style={{ flex: 1 }}>
-          <img src={logoFlux} alt="FLUX" className="brand-logo-img brand-logo-small" />
-          <div className="brandTitle" style={{ fontSize: 18 }}>Asistente IA</div>
-        </div>
       </div>
 
       {cargandoContexto && (
