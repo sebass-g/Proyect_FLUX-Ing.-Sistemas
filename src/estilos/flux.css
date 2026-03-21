@@ -2475,7 +2475,7 @@ select.input {
   .home-footer {
     height: 66px;
     bottom: 10px;
-    width: calc(100vw - 20px);
+    width: calc(100vw - 40px);
   }
   .home-footer-plus {
     width: 50px;
@@ -3066,8 +3066,8 @@ details[open] .ia-resumen-summary::before {
 /* --- Safe area insets for notched phones (iPhone X+, etc.) --- */
 .home-footer {
   padding-bottom: max(0px, env(safe-area-inset-bottom));
-  padding-left: max(18px, env(safe-area-inset-left));
-  padding-right: max(18px, env(safe-area-inset-right));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
 }
 
 .container {
@@ -3339,7 +3339,7 @@ textarea.input {
     height: 64px;
     padding: 0 16px;
     padding-bottom: max(0px, env(safe-area-inset-bottom));
-    width: calc(100vw - 24px);
+    width: calc(100vw - 40px);
     border-radius: 18px;
   }
 
@@ -3855,7 +3855,7 @@ code {
   }
 
   .home-footer {
-    padding: 0 10px;
+    padding: 0 14px;
     height: 58px;
   }
 
