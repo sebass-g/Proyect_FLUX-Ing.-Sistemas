@@ -2397,6 +2397,8 @@ select.input {
   border: 1px solid rgba(255, 155, 81, 0.3);
   border-radius: var(--radio-sm);
   font-size: 13px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .ia-bloque-dia {
@@ -2412,6 +2414,10 @@ select.input {
   color: var(--texto);
   opacity: 0.6;
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
 }
 
 /* ── IA: resultado (pre-formatted text) ── */
