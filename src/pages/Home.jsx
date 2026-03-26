@@ -13,7 +13,8 @@ import {
 } from "../servicios/grupos.api";
 import {
   listarRepositoriosFavoritos,
-  listarRepositoriosCreados
+  listarRepositoriosCreados,
+  listarRepositoriosDondeColaboro
 } from "../servicios/grupos.api";
 import { supabase } from "../config/supabaseClient";
 import logoFlux from "../assets/logo-flux.png";
@@ -77,6 +78,7 @@ export default function Home() {
   const [buscandoRepos, setBuscandoRepos] = useState(false);
   const [favoritosRepos, setFavoritosRepos] = useState([]);
   const [misReposCreados, setMisReposCreados] = useState([]);
+  const [reposColaborando, setReposColaborando] = useState([]);
   const [esFundadorVista, setEsFundadorVista] = useState(false);
   const [menuGrupoAbiertoId, setMenuGrupoAbiertoId] = useState(null);
   const [grupoEditando, setGrupoEditando] = useState(null);
@@ -176,6 +178,16 @@ export default function Home() {
     }
   }
 
+  async function cargarReposColaborando() {
+    try {
+      const colaborando = await listarRepositoriosDondeColaboro();
+      setReposColaborando(colaborando || []);
+    } catch (e) {
+      console.warn("No se pudieron cargar repos colaborando:", e.message);
+      setReposColaborando([]);
+    }
+  }
+
   useEffect(() => {
     let isMounted = true;
 
@@ -238,6 +250,7 @@ export default function Home() {
       await cargarGrupos(user?.id || null);
       await cargarFavoritos();
       await cargarReposCreados();
+      await cargarReposColaborando();
     }
 
     cargarContexto();
@@ -299,6 +312,30 @@ export default function Home() {
 
     return () => {
       supabase.removeChannel(channel);
+    };
+  }, [userId]);
+
+  // Real-time: cuando cambian colaboraciones del usuario, recargar repos colaborando.
+  useEffect(() => {
+    if (!userId) return;
+    const chan = supabase
+      .channel(`user-repos-collab-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "repositorio_publico_colaboradores",
+          filter: `user_id=eq.${userId}`
+        },
+        () => {
+          cargarReposColaborando();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(chan);
     };
   }, [userId]);
 
@@ -551,6 +588,39 @@ export default function Home() {
           <strong>Mis repositorios</strong>
           <div className="classroom-grid" style={{ marginTop: 8 }}>
             {misReposCreados.map(r => {
+              const iniciales = (r.titulo || "R")
+                .split(" ")
+                .map(p => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
+              const color = obtenerColorEntidad({
+                tipo: "repo_publico",
+                entidadId: r.id,
+                identificador: r.id || r.titulo || "",
+                colorId: r.color_id || ""
+              });
+              return (
+                <button key={r.id} className="classroom-card" onClick={() => navigate(`/repos-publicos/${r.id}`)}>
+                  <div className="classroom-card-banner" style={{ "--banner-a": color.a, "--banner-b": color.b }}>
+                    <div className="classroom-card-badge" style={{ "--badge-bg": color.badge }}>{iniciales}</div>
+                  </div>
+                  <div className="classroom-card-body">
+                    <div className="classroom-card-title">{r.titulo}</div>
+                    <div className="label classroom-card-code">Creador: {r.creador_nombre || "Usuario"}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {reposColaborando && reposColaborando.length > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <strong>Colaborando</strong>
+          <div className="classroom-grid" style={{ marginTop: 8 }}>
+            {reposColaborando.map(r => {
               const iniciales = (r.titulo || "R")
                 .split(" ")
                 .map(p => p[0])

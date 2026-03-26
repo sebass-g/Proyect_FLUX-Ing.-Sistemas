@@ -1373,6 +1373,34 @@ export async function listarRepositoriosCreados() {
   return data || [];
 }
 
+export async function listarRepositoriosDondeColaboro() {
+  const {
+    data: { session },
+    error: sessionError
+  } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const userId = session?.user?.id;
+  if (!userId) return [];
+
+  const { data: colaboraciones, error: colaboracionesError } = await supabase
+    .from("repositorio_publico_colaboradores")
+    .select("repositorio_id")
+    .eq("user_id", userId);
+  if (colaboracionesError) throw colaboracionesError;
+
+  const ids = [...new Set((colaboraciones || []).map(c => c.repositorio_id).filter(Boolean))];
+  if (!ids.length) return [];
+
+  const { data, error } = await supabase
+    .from("repositorios_publicos")
+    .select("id, titulo, creador_id, creador_nombre, color_id, created_at")
+    .in("id", ids)
+    .neq("creador_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 function obtenerFechaDesdeFiltro(fechaFiltro = "all") {
   const ahora = new Date();
   const desde = new Date(ahora);

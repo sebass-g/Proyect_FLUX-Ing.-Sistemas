@@ -1,3 +1,5 @@
+import { supabase } from "../config/supabaseClient";
+
 const SYSTEM_PROMPT = `
 Eres FLUX IA, un asistente académico inteligente para estudiantes
 de la Universidad Metropolitana (Unimet).
@@ -12,12 +14,21 @@ Reglas que debes seguir siempre:
 - Sé conciso, claro y motivador
 - Habla en primera persona cuando te refieras a ti (usa "yo")
 - No te refieras a ti como "PROYECTOFLUX" ni en tercera persona
-- Usa formato con saltos de línea y emojis para hacer las respuestas más legibles
+- Usa saltos de línea y emojis para hacer las respuestas más legibles
 - Cuando generes un plan de estudio, siempre indica el día, hora y duración sugerida
 - Si el estudiante no tiene tareas, sugiérele cómo aprovechar mejor la plataforma
 - Nunca inventes información sobre materias o contenidos que no te hayan dado como contexto
 - Trata siempre al estudiante de "tú" y con un tono amigable pero profesional
+
+FORMATO OBLIGATORIO — DEBES cumplir esto siempre:
+- PROHIBIDO usar asteriscos (* o **) para nada, ni para negritas ni para listas
+- PROHIBIDO usar almohadillas (#, ##, ###) como encabezados
+- PROHIBIDO usar guiones bajos (_) para cursivas
+- Para listas usa números (1. 2. 3.) o viñetas con guión simple y espacio (- elemento)
+- Para resaltar algo importante escríbelo en MAYÚSCULAS o entre comillas
+- Escribe en prosa natural con párrafos separados por líneas en blanco
 `;
+
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -29,6 +40,27 @@ function getApiKey() {
 
 function getModel() {
   return import.meta.env.VITE_GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+}
+
+// Elimina símbolos de Markdown de cualquier respuesta de la IA
+function limpiarMarkdown(texto = "") {
+  return texto
+    // Negritas y cursivas: **texto**, *texto*, __texto__, _texto_
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    // Encabezados: ## Título → Título
+    .replace(/^#{1,6}\s+/gm, "")
+    // Asterisco suelto al inicio de línea (lista markdown) → guión
+    .replace(/^\*\s+/gm, "- ")
+    // Código inline: `texto` → texto
+    .replace(/`([^`]+)`/g, "$1")
+    // Líneas horizontales: --- o *** o ___
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    // Espacios múltiples al final de línea
+    .replace(/ +$/gm, "")
+    .trim();
 }
 
 async function llamarGemini(userPrompt, { maxOutputTokens = 3000, temperature = 0.7 } = {}) {
@@ -70,7 +102,7 @@ async function llamarGemini(userPrompt, { maxOutputTokens = 3000, temperature = 
 
   const texto = candidate?.content?.parts?.[0]?.text;
   if (!texto) throw new Error("La IA no generó una respuesta. Intenta de nuevo.");
-  return texto;
+  return limpiarMarkdown(texto);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -142,31 +174,52 @@ const MIME_SOPORTADOS_GEMINI = new Set([
   "image/gif"
 ]);
 
-// Obtiene la URL pública de un archivo en Supabase Storage
-function obtenerUrlPublica(path) {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
-  if (!supabaseUrl || !path) return null;
-  return `${supabaseUrl}/storage/v1/object/public/Flux_repositorioGrupos/${path}`;
+// Genera una URL firmada temporal de Supabase Storage (funciona aunque el bucket no sea 100% público)
+async function obtenerUrlFirmada(path) {
+  if (!path) return null;
+  try {
+    const { data, error } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .createSignedUrl(path, 120); // válida por 2 minutos
+    if (error || !data?.signedUrl) {
+      console.error("[FLUX IA] Error creando URL firmada para", path, error);
+      return null;
+    }
+    return data.signedUrl;
+  } catch (e) {
+    console.error("[FLUX IA] Excepción en obtenerUrlFirmada:", e);
+    return null;
+  }
 }
 
-// Descarga un archivo y lo convierte a base64. Devuelve null si falla.
-async function descargarComoBase64(url, mimeType) {
+// Descarga un archivo desde Supabase y lo convierte a base64. Devuelve null si falla.
+async function descargarComoBase64(path, mimeType) {
   try {
+    const url = await obtenerUrlFirmada(path);
+    if (!url) return null;
+
     const res = await fetch(url);
-    if (!res.ok) return null;
-    // Rechazar archivos mayores a 15 MB para no saturar la llamada
+    if (!res.ok) {
+      console.error("[FLUX IA] Fetch falló para", path, res.status, res.statusText);
+      return null;
+    }
+    // Ignorar archivos mayores a 15 MB
     const contentLength = res.headers.get("content-length");
-    if (contentLength && parseInt(contentLength) > 15 * 1024 * 1024) return null;
+    if (contentLength && parseInt(contentLength) > 15 * 1024 * 1024) {
+      console.warn("[FLUX IA] Archivo demasiado grande, omitiendo:", path);
+      return null;
+    }
     const buffer = await res.arrayBuffer();
-    // Convertir ArrayBuffer a base64 de forma segura (sin btoa() para evitar errores con caracteres fuera de latin-1)
     const bytes = new Uint8Array(buffer);
     const chunks = [];
     const CHUNK = 8192;
     for (let i = 0; i < bytes.length; i += CHUNK) {
       chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
     }
+    console.log("[FLUX IA] Archivo descargado OK:", path, `(${(bytes.length / 1024).toFixed(1)} KB)`);
     return { base64: btoa(chunks.join("")), mimeType };
-  } catch {
+  } catch (e) {
+    console.error("[FLUX IA] Error descargando archivo:", path, e);
     return null;
   }
 }
@@ -213,7 +266,7 @@ async function llamarGeminiMultimodal(parts, { maxOutputTokens = 6000, temperatu
     throw new Error(`La IA no pudo procesar los archivos (${razon || bloqueo || "respuesta vacía"}). Intenta de nuevo.`);
   }
 
-  return texto;
+  return limpiarMarkdown(texto);
 }
 
 // Infiere el MIME type desde la extensión del archivo como fallback
@@ -247,11 +300,10 @@ export async function generarResumenRepositorio({ nombreRepo, archivos }) {
       const fecha = a.created_at ? new Date(a.created_at).toLocaleDateString("es-VE") : "";
       const esLegible = MIME_SOPORTADOS_GEMINI.has(mime);
       const path = a.path || a.ruta || null;
-      const publicUrl = path ? obtenerUrlPublica(path) : null;
 
       let inlineData = null;
-      if (esLegible && publicUrl && archivosConContenido < MAX_ARCHIVOS_CON_CONTENIDO) {
-        inlineData = await descargarComoBase64(publicUrl, mime);
+      if (esLegible && path && archivosConContenido < MAX_ARCHIVOS_CON_CONTENIDO) {
+        inlineData = await descargarComoBase64(path, mime);
         if (inlineData) archivosConContenido++;
       }
 
