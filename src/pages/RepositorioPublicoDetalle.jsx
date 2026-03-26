@@ -296,7 +296,8 @@ export default function RepositorioPublicoDetalle() {
         .insert({
           repositorio_id: repo.id,
           user_id: userId,
-          email: emailUsuario
+            email: emailUsuario,
+            created_by: userId
         });
 
       if (error && error.code !== '23505') throw error;
