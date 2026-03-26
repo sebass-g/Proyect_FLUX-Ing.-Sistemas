@@ -1,3 +1,5 @@
+import { supabase } from "../config/supabaseClient";
+
 const SYSTEM_PROMPT = `
 Eres FLUX IA, un asistente académico inteligente para estudiantes
 de la Universidad Metropolitana (Unimet).
@@ -172,31 +174,52 @@ const MIME_SOPORTADOS_GEMINI = new Set([
   "image/gif"
 ]);
 
-// Obtiene la URL pública de un archivo en Supabase Storage
-function obtenerUrlPublica(path) {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
-  if (!supabaseUrl || !path) return null;
-  return `${supabaseUrl}/storage/v1/object/public/Flux_repositorioGrupos/${path}`;
+// Genera una URL firmada temporal de Supabase Storage (funciona aunque el bucket no sea 100% público)
+async function obtenerUrlFirmada(path) {
+  if (!path) return null;
+  try {
+    const { data, error } = await supabase.storage
+      .from("Flux_repositorioGrupos")
+      .createSignedUrl(path, 120); // válida por 2 minutos
+    if (error || !data?.signedUrl) {
+      console.error("[FLUX IA] Error creando URL firmada para", path, error);
+      return null;
+    }
+    return data.signedUrl;
+  } catch (e) {
+    console.error("[FLUX IA] Excepción en obtenerUrlFirmada:", e);
+    return null;
+  }
 }
 
-// Descarga un archivo y lo convierte a base64. Devuelve null si falla.
-async function descargarComoBase64(url, mimeType) {
+// Descarga un archivo desde Supabase y lo convierte a base64. Devuelve null si falla.
+async function descargarComoBase64(path, mimeType) {
   try {
+    const url = await obtenerUrlFirmada(path);
+    if (!url) return null;
+
     const res = await fetch(url);
-    if (!res.ok) return null;
-    // Rechazar archivos mayores a 15 MB para no saturar la llamada
+    if (!res.ok) {
+      console.error("[FLUX IA] Fetch falló para", path, res.status, res.statusText);
+      return null;
+    }
+    // Ignorar archivos mayores a 15 MB
     const contentLength = res.headers.get("content-length");
-    if (contentLength && parseInt(contentLength) > 15 * 1024 * 1024) return null;
+    if (contentLength && parseInt(contentLength) > 15 * 1024 * 1024) {
+      console.warn("[FLUX IA] Archivo demasiado grande, omitiendo:", path);
+      return null;
+    }
     const buffer = await res.arrayBuffer();
-    // Convertir ArrayBuffer a base64 de forma segura (sin btoa() para evitar errores con caracteres fuera de latin-1)
     const bytes = new Uint8Array(buffer);
     const chunks = [];
     const CHUNK = 8192;
     for (let i = 0; i < bytes.length; i += CHUNK) {
       chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK)));
     }
+    console.log("[FLUX IA] Archivo descargado OK:", path, `(${(bytes.length / 1024).toFixed(1)} KB)`);
     return { base64: btoa(chunks.join("")), mimeType };
-  } catch {
+  } catch (e) {
+    console.error("[FLUX IA] Error descargando archivo:", path, e);
     return null;
   }
 }
@@ -277,11 +300,10 @@ export async function generarResumenRepositorio({ nombreRepo, archivos }) {
       const fecha = a.created_at ? new Date(a.created_at).toLocaleDateString("es-VE") : "";
       const esLegible = MIME_SOPORTADOS_GEMINI.has(mime);
       const path = a.path || a.ruta || null;
-      const publicUrl = path ? obtenerUrlPublica(path) : null;
 
       let inlineData = null;
-      if (esLegible && publicUrl && archivosConContenido < MAX_ARCHIVOS_CON_CONTENIDO) {
-        inlineData = await descargarComoBase64(publicUrl, mime);
+      if (esLegible && path && archivosConContenido < MAX_ARCHIVOS_CON_CONTENIDO) {
+        inlineData = await descargarComoBase64(path, mime);
         if (inlineData) archivosConContenido++;
       }
 
