@@ -1135,6 +1135,9 @@ export async function eliminarArchivoRepositorioPublico({ repositorioId, archivo
 }
 
 export async function eliminarRepositorioPublico({ repositorioId }) {
+  const repoId = `${repositorioId || ""}`.trim();
+  if (!repoId) throw new Error("Repositorio inválido.");
+
   const {
     data: { session },
     error: sessionError
@@ -1143,12 +1146,12 @@ export async function eliminarRepositorioPublico({ repositorioId }) {
   const user = session?.user;
   if (!user) throw new Error("No hay sesion activa.");
 
-  await asegurarPropietarioRepositorioPublico({ repositorioId, userId: user.id });
+  await asegurarPropietarioRepositorioPublico({ repositorioId: repoId, userId: user.id });
 
   const { data: archivos, error: archivosError } = await supabase
     .from("repositorio_publico_archivos")
     .select("path")
-    .eq("repositorio_id", repositorioId);
+    .eq("repositorio_id", repoId);
   if (archivosError) throw archivosError;
 
   const paths = (archivos || []).map(a => a.path).filter(Boolean);
@@ -1164,7 +1167,7 @@ export async function eliminarRepositorioPublico({ repositorioId }) {
   const { error } = await supabase
     .from("repositorios_publicos")
     .delete()
-    .eq("id", repositorioId);
+    .eq("id", repoId);
   if (error) throw error;
 }
 

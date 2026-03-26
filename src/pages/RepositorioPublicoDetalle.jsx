@@ -20,6 +20,7 @@ import {
 import { supabase } from "../config/supabaseClient";
 import Estrellas from "../components/Estrellas";
 import ModalQR from "../components/ModalQR"; 
+import ConfirmModal from "../components/ConfirmModal";
 import { generarResumenRepositorio } from "../servicios/ia.api";
 import {
   PALETA_BANNERS,
@@ -54,6 +55,7 @@ export default function RepositorioPublicoDetalle() {
   const [miRating, setMiRating] = useState("");
   const [guardandoRating, setGuardandoRating] = useState(false);
   const [colorRepoSeleccionado, setColorRepoSeleccionado] = useState(PALETA_BANNERS[0].id);
+  const [mostrarConfirmEliminar, setMostrarConfirmEliminar] = useState(false);
   
   // ESTADOS PARA IA Y PREVIEWS (De Enrique)
   const [iaGenerando, setIaGenerando] = useState(false);
@@ -339,14 +341,19 @@ export default function RepositorioPublicoDetalle() {
   }
 
   async function manejarEliminarRepositorio() {
+    // Abrir modal de confirmación en lugar del confirm nativo
     if (!repo?.id || !esCreador) return;
-    if (window.confirm("¿Seguro que deseas eliminar este repositorio?")) {
-      try {
-        await eliminarRepositorioPublico(repo.id);
-        navigate("/grupos");
-      } catch (error) {
-        alert("Error al eliminar: " + error.message);
-      }
+    setMostrarConfirmEliminar(true);
+  }
+
+  async function confirmarEliminarRepositorio() {
+    if (!repo?.id || !esCreador) return;
+    try {
+      await eliminarRepositorioPublico({ repositorioId: repo.id });
+      setMostrarConfirmEliminar(false);
+      navigate("/grupos");
+    } catch (error) {
+      alert("Error al eliminar: " + error.message);
     }
   }
 
@@ -453,9 +460,18 @@ export default function RepositorioPublicoDetalle() {
 
             {esCreador && (
               <div style={{ marginTop: 12 }}>
-                <button className="btn" onClick={manejarEliminarRepositorio}>
-                  Eliminar repositorio
-                </button>
+                  <button className="btn" onClick={manejarEliminarRepositorio}>
+                    Eliminar repositorio
+                  </button>
+                  <ConfirmModal
+                    isOpen={mostrarConfirmEliminar}
+                    title="¿Eliminar repositorio?"
+                    message="Esta acción eliminará el repositorio y no se podrá deshacer. ¿Deseas continuar?"
+                    onCancel={() => setMostrarConfirmEliminar(false)}
+                    onConfirm={confirmarEliminarRepositorio}
+                    confirmLabel="Aceptar"
+                    cancelLabel="Cancelar"
+                  />
               </div>
             )}
 
