@@ -7,23 +7,23 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: ['icon-192.png', 'icon-512.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'PROYECTOFLUX',
         short_name: 'FLUX',
         description: 'Plataforma de gestión de proyectos y grupos',
-        theme_color: '#FF9B51',
+        theme_color: '#2B3C49',
         background_color: '#2B3C49',
         display: 'standalone',
         start_url: '/',
         icons: [
           {
-            src: '/pwa-192x192.png',
+            src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/pwa-512x512.png',
+            src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable'
