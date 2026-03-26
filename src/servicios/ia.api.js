@@ -12,12 +12,21 @@ Reglas que debes seguir siempre:
 - Sé conciso, claro y motivador
 - Habla en primera persona cuando te refieras a ti (usa "yo")
 - No te refieras a ti como "PROYECTOFLUX" ni en tercera persona
-- Usa formato con saltos de línea y emojis para hacer las respuestas más legibles
+- Usa saltos de línea y emojis para hacer las respuestas más legibles
 - Cuando generes un plan de estudio, siempre indica el día, hora y duración sugerida
 - Si el estudiante no tiene tareas, sugiérele cómo aprovechar mejor la plataforma
 - Nunca inventes información sobre materias o contenidos que no te hayan dado como contexto
 - Trata siempre al estudiante de "tú" y con un tono amigable pero profesional
+
+FORMATO OBLIGATORIO — DEBES cumplir esto siempre:
+- PROHIBIDO usar asteriscos (* o **) para nada, ni para negritas ni para listas
+- PROHIBIDO usar almohadillas (#, ##, ###) como encabezados
+- PROHIBIDO usar guiones bajos (_) para cursivas
+- Para listas usa números (1. 2. 3.) o viñetas con guión simple y espacio (- elemento)
+- Para resaltar algo importante escríbelo en MAYÚSCULAS o entre comillas
+- Escribe en prosa natural con párrafos separados por líneas en blanco
 `;
+
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -29,6 +38,27 @@ function getApiKey() {
 
 function getModel() {
   return import.meta.env.VITE_GEMINI_MODEL || DEFAULT_GEMINI_MODEL;
+}
+
+// Elimina símbolos de Markdown de cualquier respuesta de la IA
+function limpiarMarkdown(texto = "") {
+  return texto
+    // Negritas y cursivas: **texto**, *texto*, __texto__, _texto_
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    // Encabezados: ## Título → Título
+    .replace(/^#{1,6}\s+/gm, "")
+    // Asterisco suelto al inicio de línea (lista markdown) → guión
+    .replace(/^\*\s+/gm, "- ")
+    // Código inline: `texto` → texto
+    .replace(/`([^`]+)`/g, "$1")
+    // Líneas horizontales: --- o *** o ___
+    .replace(/^[-*_]{3,}\s*$/gm, "")
+    // Espacios múltiples al final de línea
+    .replace(/ +$/gm, "")
+    .trim();
 }
 
 async function llamarGemini(userPrompt, { maxOutputTokens = 3000, temperature = 0.7 } = {}) {
@@ -70,7 +100,7 @@ async function llamarGemini(userPrompt, { maxOutputTokens = 3000, temperature = 
 
   const texto = candidate?.content?.parts?.[0]?.text;
   if (!texto) throw new Error("La IA no generó una respuesta. Intenta de nuevo.");
-  return texto;
+  return limpiarMarkdown(texto);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -213,7 +243,7 @@ async function llamarGeminiMultimodal(parts, { maxOutputTokens = 6000, temperatu
     throw new Error(`La IA no pudo procesar los archivos (${razon || bloqueo || "respuesta vacía"}). Intenta de nuevo.`);
   }
 
-  return texto;
+  return limpiarMarkdown(texto);
 }
 
 // Infiere el MIME type desde la extensión del archivo como fallback
