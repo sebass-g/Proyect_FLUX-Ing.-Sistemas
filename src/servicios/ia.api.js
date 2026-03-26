@@ -128,57 +128,173 @@ Organiza la respuesta por días de la semana y asegúrate de cubrir todos los pu
 }
 
 // ─────────────────────────────────────────────────────────
-// Tab 2 – Resumidor de Repositorio
+// Tab 2 – Resumidor de Repositorio (con lectura de contenido)
 // ─────────────────────────────────────────────────────────
+
+// Tipos de archivo que Gemini puede leer como inlineData
+const MIME_SOPORTADOS_GEMINI = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/heic",
+  "image/gif"
+]);
+
+// Obtiene la URL pública de un archivo en Supabase Storage
+function obtenerUrlPublica(path) {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.replace(/\/$/, "");
+  if (!supabaseUrl || !path) return null;
+  return `${supabaseUrl}/storage/v1/object/public/Flux_repositorioGrupos/${path}`;
+}
+
+// Descarga un archivo y lo convierte a base64. Devuelve null si falla.
+async function descargarComoBase64(url, mimeType) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    // Rechazar archivos mayores a 15 MB para no saturar la llamada
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength) > 15 * 1024 * 1024) return null;
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    for (const b of bytes) binary += String.fromCharCode(b);
+    return { base64: btoa(binary), mimeType };
+  } catch {
+    return null;
+  }
+}
+
+// Llama a Gemini con partes multimodales (texto + archivos en base64)
+async function llamarGeminiMultimodal(parts, { maxOutputTokens = 6000, temperature = 0.6 } = {}) {
+  const apiKey = getApiKey();
+  const model = getModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ parts }],
+      generationConfig: { maxOutputTokens, temperature }
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Error al contactar la IA (${response.status})`);
+  }
+
+  const data = await response.json();
+  const candidate = data.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    console.warn("[FLUX IA] Resumen cortado por límite de tokens.");
+  }
+  const texto = candidate?.content?.parts?.[0]?.text;
+  if (!texto) throw new Error("La IA no generó una respuesta. Intenta de nuevo.");
+  return texto;
+}
+
 export async function generarResumenRepositorio({ nombreRepo, archivos }) {
   const totalArchivos = archivos.length;
 
-  const archivosTexto =
-    totalArchivos > 0
-      ? archivos
-          .map((a, i) => {
-            const nombre = a.nombre || a.name || `Archivo ${i + 1}`;
-            const tipo = a.mime_type || a.content_type || "archivo";
-            const tamano = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(1)} KB` : "";
-            const fecha = a.created_at ? new Date(a.created_at).toLocaleDateString("es-VE") : "";
-            const uploader = a.uploader_nombre || "";
-            const partes = [tipo, tamano, fecha ? `subido el ${fecha}` : "", uploader ? `por ${uploader}` : ""].filter(Boolean);
-            return `${i + 1}. ${nombre} (${partes.join(", ")})`;
-          })
-          .join("\n")
-      : "El repositorio está vacío, no tiene archivos.";
+  // ── Construir metadatos + descargar contenido de PDFs e imágenes ────────
+  // Limitamos a los primeros 8 archivos con contenido readable para no
+  // saturar el contexto de Gemini (~4 MB de base64 es el límite razonable)
+  const MAX_ARCHIVOS_CON_CONTENIDO = 8;
+  let archivosConContenido = 0;
 
-  const prompt = `Analiza detalladamente el siguiente repositorio de estudio universitario y genera un informe COMPLETO.
+  const archivosInfo = await Promise.all(
+    archivos.map(async (a, i) => {
+      const nombre = a.nombre || a.name || `Archivo ${i + 1}`;
+      const mime = (a.mime_type || a.content_type || "").toLowerCase();
+      const tamano = a.size_bytes ? `${(a.size_bytes / 1024).toFixed(1)} KB` : "";
+      const fecha = a.created_at ? new Date(a.created_at).toLocaleDateString("es-VE") : "";
+      const esLegible = MIME_SOPORTADOS_GEMINI.has(mime);
+      const path = a.path || a.ruta || null;
+      const publicUrl = path ? obtenerUrlPublica(path) : null;
+
+      let inlineData = null;
+      if (esLegible && publicUrl && archivosConContenido < MAX_ARCHIVOS_CON_CONTENIDO) {
+        inlineData = await descargarComoBase64(publicUrl, mime);
+        if (inlineData) archivosConContenido++;
+      }
+
+      return { nombre, mime, tamano, fecha, inlineData, indice: i + 1 };
+    })
+  );
+
+  // ── Construir el prompt de texto ────────────────────────────────────────
+  const archivosTexto = archivosInfo
+    .map(({ nombre, mime, tamano, fecha, inlineData, indice }) => {
+      const estado = inlineData
+        ? "✅ contenido leído"
+        : MIME_SOPORTADOS_GEMINI.has(mime)
+          ? "⚠️ no descargado (límite alcanzado)"
+          : "📋 solo metadata (formato no soportado para lectura directa)";
+      const partes = [mime, tamano, fecha ? `subido el ${fecha}` : "", estado].filter(Boolean);
+      return `${indice}. ${nombre} (${partes.join(" | ")})`;
+    })
+    .join("\n") || "El repositorio está vacío.";
+
+  const archivosConContenidoLeido = archivosInfo.filter(a => a.inlineData).length;
+  const archivosNoLeidos = totalArchivos - archivosConContenidoLeido;
+
+  const promptTexto = `Analiza en profundidad el siguiente repositorio de estudio universitario y genera un informe COMPLETO basado en el contenido real de los archivos adjuntos.
 
 📁 REPOSITORIO: "${nombreRepo}"
-📊 TOTAL DE ARCHIVOS: ${totalArchivos}
+📊 TOTAL DE ARCHIVOS: ${totalArchivos} (${archivosConContenidoLeido} con contenido leído, ${archivosNoLeidos} solo con metadata)
 
 📄 LISTA DE ARCHIVOS:
 ${archivosTexto}
 
-IMPORTANTE: Debes completar TODAS las secciones de la respuesta sin cortarla a la mitad. Si hay muchos archivos, analízalos todos antes de concluir.
+${archivosConContenidoLeido > 0
+    ? `Los archivos marcados con ✅ están adjuntos a este mensaje para que puedas leer su contenido completo.
+Extrae los temas, conceptos e información más importante de cada uno.`
+    : "Basa tu análisis en los nombres y tipos de archivo."}
 
-Genera el siguiente informe completo, sección por sección:
+IMPORTANTE: Completa TODAS las secciones antes de terminar. No cortes la respuesta a la mitad.
 
-## 📌 1. Resumen del Repositorio
-Describe qué temas, materias o contenidos cubre este repositorio basándote en los nombres de los archivos. Identifica patrones temáticos y agrupa los archivos por tema si es posible.
+Genera el siguiente informe:
+
+## 📌 1. Resumen del Contenido
+${archivosConContenidoLeido > 0
+    ? "Describe los temas, conceptos principales y la información más relevante encontrada en cada archivo leído."
+    : "Describe qué temas cubre este repositorio según los nombres de los archivos."}
 
 ## 📚 2. Orden de Estudio Recomendado
-Lista explícitamente TODOS los archivos en el orden óptimo para estudiarlos, con una breve justificación de por qué ese orden.
+Lista TODOS los archivos en el orden óptimo para estudiarlos, con justificación basada en el contenido o los nombres.
 
-## ⏱️ 3. Estimación de Tiempo Total
-Estima cuánto tiempo tomaría revisar todo el material. Desglosa por archivo o grupo de archivos cuando sea relevante.
+## ⏱️ 3. Estimación de Tiempo de Estudio
+Estima cuánto tiempo tomaría revisar cada archivo y el total, basándote en el contenido o tamaño.
 
 ## 💡 4. Recomendaciones de Estudio
-Da al menos 4 recomendaciones concretas y específicas para aprovechar mejor este repositorio.
+Da al menos 5 recomendaciones concretas basadas en el contenido real del repositorio.
 
 ## ✅ 5. Conclusión
-Un cierre motivacional resumiendo los puntos clave del repositorio.
+Resumen motivacional con los puntos clave del repositorio.
 
-${totalArchivos === 0 ? "Como el repositorio está vacío, en cada sección sugiere qué tipos de archivos convendría agregar dado el nombre del repositorio." : ""}`;
+${totalArchivos === 0 ? "El repositorio está vacío: sugiere qué tipos de archivos convendría agregar dado el nombre." : ""}`;
 
-  // Usamos más tokens para resúmenes, ya que pueden ser respuestas largas
-  return llamarGemini(prompt, { maxOutputTokens: 6000, temperature: 0.6 });
+  // ── Construir partes multimodales (texto + archivos inline) ─────────────
+  const parts = [{ text: promptTexto }];
+
+  for (const archivo of archivosInfo) {
+    if (!archivo.inlineData) continue;
+    parts.push({
+      inlineData: {
+        mimeType: archivo.inlineData.mimeType,
+        data: archivo.inlineData.base64
+      }
+    });
+    // Etiqueta de contexto para que Gemini sepa qué archivo corresponde a cada inline
+    parts.push({ text: `[Archivo adjunto: "${archivo.nombre}"]` });
+  }
+
+  return llamarGeminiMultimodal(parts, { maxOutputTokens: 8000, temperature: 0.5 });
 }
 
 // ─────────────────────────────────────────────────────────
